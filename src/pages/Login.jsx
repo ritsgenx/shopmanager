@@ -10,14 +10,14 @@ import { Label } from '@/components/ui/label'
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
 
 export default function Login() {
-  const { user, signIn, loading } = useAuth()
+  const { isAuthenticated, isLoading, signIn } = useAuth()
   const navigate = useNavigate()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
   const [submitting, setSubmitting] = useState(false)
 
-  if (!loading && user) return <Navigate to="/dashboard" replace />
+  if (!isLoading && isAuthenticated) return <Navigate to="/dashboard" replace />
 
   const handleSubmit = async (e) => {
     e.preventDefault()
@@ -32,7 +32,7 @@ export default function Login() {
       toast.error(error.message ?? 'Invalid credentials')
     } else {
       toast.success('Welcome back!')
-      navigate('/dashboard')
+      navigate('/dashboard', { replace: true })
     }
   }
 

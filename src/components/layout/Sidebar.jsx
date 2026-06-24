@@ -4,7 +4,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import {
   LayoutDashboard, Package, ShoppingCart, Users, UserCheck,
   CalendarCheck, BarChart3, Settings, LogOut, ChevronLeft,
-  ChevronRight, Store
+  ChevronRight, Store, ShoppingBag, Wallet
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useAuth } from '@/context/AuthContext'
@@ -15,26 +15,33 @@ import { toast } from 'sonner'
 const navItems = [
   { to: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
   { to: '/inventory', icon: Package, label: 'Inventory' },
+  { to: '/purchases', icon: ShoppingBag, label: 'Purchases', adminOnly: true },
   { to: '/sales', icon: ShoppingCart, label: 'Sales' },
   { to: '/customers', icon: Users, label: 'Customers' },
   { to: '/employees', icon: UserCheck, label: 'Employees' },
-  { to: '/attendance', icon: CalendarCheck, label: 'Attendance' },
-  { to: '/reports', icon: BarChart3, label: 'Reports' },
-  { to: '/settings', icon: Settings, label: 'Settings' },
+  { to: '/attendance',   icon: CalendarCheck, label: 'Attendance' },
+  { to: '/commissions',  icon: Wallet,        label: 'Commissions' },
+  { to: '/reports',      icon: BarChart3,     label: 'Reports' },
+  { to: '/settings', icon: Settings, label: 'Settings', adminOnly: true },
 ]
 
 export default function Sidebar() {
   const [collapsed, setCollapsed] = useState(false)
-  const { user, signOut } = useAuth()
+  const { currentUser, currentTenant, logout } = useAuth()
   const navigate = useNavigate()
 
+  const shopName = currentTenant?.name ?? 'MobileShop'
+  const userName = currentUser?.full_name ?? currentUser?.email ?? 'User'
+  const userRole = currentUser?.role ?? 'Staff'
+  const avatarInitials = userName.slice(0, 2).toUpperCase()
+
   const handleSignOut = async () => {
-    const { error } = await signOut()
-    if (error) {
-      toast.error('Failed to sign out')
-    } else {
+    try {
+      await logout()
       toast.success('Signed out successfully')
       navigate('/login')
+    } catch {
+      toast.error('Failed to sign out')
     }
   }
 
@@ -58,7 +65,7 @@ export default function Sidebar() {
               transition={{ duration: 0.2 }}
               className="overflow-hidden"
             >
-              <p className="text-sm font-bold text-white whitespace-nowrap">MobileShop</p>
+              <p className="text-sm font-bold text-white whitespace-nowrap">{shopName}</p>
               <p className="text-xs text-slate-400 whitespace-nowrap">Management System</p>
             </motion.div>
           )}
@@ -76,7 +83,7 @@ export default function Sidebar() {
       {/* Nav items */}
       <nav className="flex-1 py-4 overflow-y-auto overflow-x-hidden">
         <ul className="space-y-1 px-2">
-          {navItems.map(({ to, icon: Icon, label }) => (
+          {navItems.filter(item => !(item.adminOnly && currentUser?.role === 'employee')).map(({ to, icon: Icon, label }) => (
             <li key={to}>
               <NavLink
                 to={to}
@@ -116,7 +123,7 @@ export default function Sidebar() {
         <div className={cn('flex items-center gap-3 px-2 py-2 rounded-lg', !collapsed && 'mb-2')}>
           <Avatar className="w-8 h-8 shrink-0">
             <AvatarFallback className="bg-indigo-600 text-white text-xs">
-              {user?.email?.[0]?.toUpperCase() ?? 'U'}
+              {avatarInitials}
             </AvatarFallback>
           </Avatar>
           <AnimatePresence>
@@ -127,8 +134,8 @@ export default function Sidebar() {
                 exit={{ opacity: 0 }}
                 className="overflow-hidden flex-1 min-w-0"
               >
-                <p className="text-xs font-medium text-white truncate">{user?.email}</p>
-                <p className="text-xs text-slate-400">Admin</p>
+                <p className="text-xs font-medium text-white truncate">{userName}</p>
+                <p className="text-xs text-slate-400 capitalize">{userRole}</p>
               </motion.div>
             )}
           </AnimatePresence>

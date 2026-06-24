@@ -12,6 +12,10 @@ import Employees from '@/pages/Employees'
 import Attendance from '@/pages/Attendance'
 import Reports from '@/pages/Reports'
 import Settings from '@/pages/Settings'
+import Purchases from '@/pages/Purchases'
+import NewPurchase from '@/pages/NewPurchase'
+import NewSale from '@/pages/NewSale'
+import Commissions from '@/pages/Commissions'
 
 export default function App() {
   return (
@@ -26,11 +30,15 @@ export default function App() {
             <Route path="/dashboard" element={<Dashboard />} />
             <Route path="/inventory" element={<Inventory />} />
             <Route path="/sales" element={<Sales />} />
+            <Route path="/sales/new" element={<NewSale />} />
             <Route path="/customers" element={<Customers />} />
             <Route path="/employees" element={<Employees />} />
             <Route path="/attendance" element={<Attendance />} />
             <Route path="/reports" element={<Reports />} />
             <Route path="/settings" element={<Settings />} />
+            <Route path="/purchases" element={<Purchases />} />
+            <Route path="/purchases/new" element={<NewPurchase />} />
+            <Route path="/commissions" element={<Commissions />} />
           </Route>
         </Route>
 
