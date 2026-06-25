@@ -1,15 +1,35 @@
-import React, { useState, useEffect } from 'react'
-import { Outlet, useLocation } from 'react-router-dom'
+import React, { useState, useEffect, useRef } from 'react'
+import { Outlet, useLocation, useNavigationType } from 'react-router-dom'
 import Sidebar from './Sidebar'
 import Navbar from './Navbar'
 
 export default function AppLayout() {
   const [mobileOpen, setMobileOpen] = useState(false)
   const location = useLocation()
-  const mainRef = React.useRef(null)
+  const navType = useNavigationType()
+  const mainRef = useRef(null)
+  const scrollPositions = useRef({})
 
   useEffect(() => {
-    mainRef.current?.scrollTo(0, 0)
+    const el = mainRef.current
+    if (!el) return
+
+    if (navType === 'POP') {
+      // Back / forward button — restore the saved position
+      requestAnimationFrame(() => {
+        el.scrollTop = scrollPositions.current[location.pathname] || 0
+      })
+    } else {
+      // Normal forward navigation — start at top
+      el.scrollTop = 0
+    }
+
+    // Continuously save scroll position for the current path
+    const handleScroll = () => {
+      scrollPositions.current[location.pathname] = el.scrollTop
+    }
+    el.addEventListener('scroll', handleScroll, { passive: true })
+    return () => el.removeEventListener('scroll', handleScroll)
   }, [location.pathname])
 
   return (
