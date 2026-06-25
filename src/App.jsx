@@ -18,6 +18,7 @@ import Purchases from '@/pages/Purchases'
 import NewPurchase from '@/pages/NewPurchase'
 import NewSale from '@/pages/NewSale'
 import Commissions from '@/pages/Commissions'
+import CustomerDetail from '@/pages/CustomerDetail'
 import SuperAdmin from '@/pages/SuperAdmin'
 import AuthCallback from '@/pages/AuthCallback'
 
@@ -50,6 +51,7 @@ export default function App() {
             <Route path="/sales" element={<Sales />} />
             <Route path="/sales/new" element={<NewSale />} />
             <Route path="/customers" element={<Customers />} />
+            <Route path="/customers/:id" element={<CustomerDetail />} />
             <Route path="/employees" element={<Employees />} />
             <Route path="/attendance" element={<Attendance />} />
             <Route path="/reports" element={<Reports />} />
