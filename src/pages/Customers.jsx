@@ -235,7 +235,7 @@ export default function Customers() {
                 <tr
                   key={customer.id}
                   onClick={() => navigate(`/customers/${customer.id}`)}
-                  className="hover:bg-muted/20 cursor-pointer transition-colors"
+                  className="border-l-2 border-l-transparent hover:border-l-indigo-500 hover:bg-muted/20 cursor-pointer transition-colors"
                 >
                   <td className="px-4 py-3 font-medium">{displayName(customer)}</td>
                   <td className="px-4 py-3 text-muted-foreground">{customer.phone}</td>
@@ -290,7 +290,7 @@ export default function Customers() {
             <div
               key={customer.id}
               onClick={() => navigate(`/customers/${customer.id}`)}
-              className="rounded-xl border border-border p-4 cursor-pointer hover:bg-muted/20 transition-colors"
+              className="rounded-xl border border-border hover:border-l-indigo-500 p-4 cursor-pointer hover:bg-muted/20 transition-colors"
             >
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">

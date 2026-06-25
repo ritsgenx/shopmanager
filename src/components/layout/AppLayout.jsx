@@ -14,22 +14,34 @@ export default function AppLayout() {
     const el = mainRef.current
     if (!el) return
 
+    let cancelled = false
+
     if (navType === 'POP') {
-      // Back / forward button — restore the saved position
-      requestAnimationFrame(() => {
-        el.scrollTop = scrollPositions.current[location.pathname] || 0
-      })
+      const target = scrollPositions.current[location.pathname] || 0
+      if (target > 0) {
+        // Retry until the content is tall enough to hold the target scroll.
+        // Necessary because the page may be in a loading state when restoration runs.
+        const restore = () => {
+          if (cancelled || !mainRef.current) return
+          mainRef.current.scrollTop = target
+          if (mainRef.current.scrollTop < target - 10) {
+            setTimeout(restore, 100)
+          }
+        }
+        setTimeout(restore, 50)
+      }
     } else {
-      // Normal forward navigation — start at top
       el.scrollTop = 0
     }
 
-    // Continuously save scroll position for the current path
     const handleScroll = () => {
       scrollPositions.current[location.pathname] = el.scrollTop
     }
     el.addEventListener('scroll', handleScroll, { passive: true })
-    return () => el.removeEventListener('scroll', handleScroll)
+    return () => {
+      cancelled = true
+      el.removeEventListener('scroll', handleScroll)
+    }
   }, [location.pathname])
 
   return (

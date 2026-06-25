@@ -237,7 +237,7 @@ export default function Sales() {
               <tr
                 key={sale.id}
                 onClick={() => openDetail(sale.id)}
-                className="hover:bg-muted/20 cursor-pointer transition-colors"
+                className="border-l-2 border-l-transparent hover:border-l-indigo-500 hover:bg-muted/20 cursor-pointer transition-colors"
               >
                 <td className="px-4 py-3 font-mono text-xs font-semibold">{sale.invoice_number}</td>
                 <td className="px-4 py-3 text-muted-foreground">{fmtDate(sale.sale_date)}</td>
@@ -279,7 +279,7 @@ export default function Sales() {
           <div
             key={sale.id}
             onClick={() => openDetail(sale.id)}
-            className="rounded-xl border border-border p-4 cursor-pointer hover:bg-muted/20 transition-colors"
+            className="rounded-xl border border-border hover:border-l-indigo-500 p-4 cursor-pointer hover:bg-muted/20 transition-colors"
           >
             <div className="flex justify-between items-start">
               <div>

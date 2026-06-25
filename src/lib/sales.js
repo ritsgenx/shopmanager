@@ -45,6 +45,24 @@ export async function getSales(tenantId, filters = {}) {
   return { data: data ?? [], error }
 }
 
+export async function getCustomerSales(tenantId, customerId) {
+  const { data, error } = await supabase
+    .from('sales')
+    .select(`
+      id, invoice_number, sale_date, grand_total, payment_method, payment_status,
+      cgst_amount,
+      sale_items (
+        id, quantity, unit_price,
+        products ( brand, model, variant, color )
+      ),
+      users!employee_id ( full_name )
+    `)
+    .eq('tenant_id', tenantId)
+    .eq('customer_id', customerId)
+    .order('sale_date', { ascending: false })
+  return { data: data ?? [], error }
+}
+
 export async function getSaleById(tenantId, id) {
   const { data, error } = await supabase
     .from('sales')
