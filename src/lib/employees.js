@@ -13,10 +13,11 @@ export async function getEmployees(tenantId) {
   return { data: data ?? [], error }
 }
 
-export async function getEmployeeById(id) {
+export async function getEmployeeById(tenantId, id) {
   const { data, error } = await supabase
     .from('users')
     .select(`*, employee_details(*), employee_permissions(*)`)
+    .eq('tenant_id', tenantId)
     .eq('id', id)
     .single()
   return { data, error }
@@ -98,6 +99,7 @@ export async function updateEmployee(userId, tenantId, profileData, detailsData,
       date_of_joining: profileData.date_of_joining || null,
       updated_at: new Date().toISOString(),
     })
+    .eq('tenant_id', tenantId)
     .eq('id', userId)
   if (profileError) return { error: profileError }
 
@@ -143,18 +145,20 @@ export async function updatePermissions(userId, tenantId, permissionsData) {
   return { error }
 }
 
-export async function deactivateEmployee(id) {
+export async function deactivateEmployee(tenantId, id) {
   const { error } = await supabase
     .from('users')
     .update({ is_active: false, updated_at: new Date().toISOString() })
+    .eq('tenant_id', tenantId)
     .eq('id', id)
   return { error }
 }
 
-export async function reactivateEmployee(id) {
+export async function reactivateEmployee(tenantId, id) {
   const { error } = await supabase
     .from('users')
     .update({ is_active: true, updated_at: new Date().toISOString() })
+    .eq('tenant_id', tenantId)
     .eq('id', id)
   return { error }
 }

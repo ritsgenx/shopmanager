@@ -13,6 +13,7 @@ const pageLabels = {
   '/attendance': 'Attendance',
   '/reports': 'Reports',
   '/settings': 'Settings',
+  '/super-admin': 'Platform Administration',
 }
 
 export default function Navbar() {

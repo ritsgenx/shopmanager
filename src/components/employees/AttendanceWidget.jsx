@@ -40,7 +40,7 @@ export default function AttendanceWidget() {
     if (!currentUser?.id || !currentTenant?.id) return
     setLoading(true)
     const [{ data: att }, { data: tenant, error: tenantError }] = await Promise.all([
-      getTodayAttendance(currentUser.id),
+      getTodayAttendance(currentTenant.id, currentUser.id),
       getTenantSettings(currentTenant.id),
     ])
     setRecord(att)
@@ -106,7 +106,7 @@ export default function AttendanceWidget() {
       const pos = await getPosition()
       const { latitude: lat, longitude: lng } = pos.coords
       const { data, error } = await checkOut(
-        record.id, lat, lng, shopLat, shopLng, geoRadius, record.check_in_time
+        currentTenant.id, record.id, lat, lng, shopLat, shopLng, geoRadius, record.check_in_time
       )
       if (error) { toast.error(error.message); return }
       setRecord(data)

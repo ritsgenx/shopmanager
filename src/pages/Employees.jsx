@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react'
+﻿import React, { useState, useEffect, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { Plus, Search, UserCheck, UserX, Edit2, RefreshCw } from 'lucide-react'
@@ -90,8 +90,8 @@ function EmployeeDetailDialog({ employeeId, open, onOpenChange, onEdit, onStatus
     if (!employeeId) return
     setLoading(true)
     const [{ data: empData }, { data: attData }] = await Promise.all([
-      getEmployeeById(employeeId),
-      getAttendanceByUser(employeeId, now.getFullYear(), now.getMonth() + 1),
+      getEmployeeById(tenantId, employeeId),
+      getAttendanceByUser(tenantId, employeeId, now.getFullYear(), now.getMonth() + 1),
     ])
     if (empData) {
       setEmp(empData)
@@ -116,7 +116,7 @@ function EmployeeDetailDialog({ employeeId, open, onOpenChange, onEdit, onStatus
     if (!emp) return
     setToggling(true)
     const fn = emp.is_active ? deactivateEmployee : reactivateEmployee
-    const { error } = await fn(employeeId)
+    const { error } = await fn(tenantId, employeeId)
     setToggling(false)
     if (error) { toast.error(error.message ?? 'Action failed'); return }
     toast.success(emp.is_active ? 'Employee deactivated' : 'Employee reactivated')
@@ -135,7 +135,7 @@ function EmployeeDetailDialog({ employeeId, open, onOpenChange, onEdit, onStatus
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+      <DialogContent className="max-w-2xl w-full max-h-[90vh] overflow-y-auto" onInteractOutside={(e) => e.preventDefault()}>
         {loading || !emp ? (
           <div className="flex items-center justify-center py-20 text-muted-foreground text-sm">Loading…</div>
         ) : (

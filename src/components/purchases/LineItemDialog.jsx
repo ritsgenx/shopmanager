@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react'
+﻿import React, { useState, useEffect } from 'react'
 import { useForm, Controller } from 'react-hook-form'
 import { Loader2 } from 'lucide-react'
 import { toast } from 'sonner'
@@ -76,7 +76,7 @@ export default function LineItemDialog({ open, onOpenChange, tenantId, products,
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="bg-slate-800 border-slate-700 text-white max-w-md max-h-[90vh] overflow-y-auto p-6">
+      <DialogContent className="bg-slate-800 border-slate-700 text-white max-w-md max-h-[90vh] overflow-y-auto p-6" onInteractOutside={(e) => e.preventDefault()}>
         <DialogHeader>
           <DialogTitle className="text-white">Select Product</DialogTitle>
         </DialogHeader>

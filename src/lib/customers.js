@@ -6,7 +6,7 @@ export async function getCustomers(tenantId, { customerType, searchTerm } = {}) 
     .select('*')
     .eq('tenant_id', tenantId)
     .eq('is_active', true)
-    .order('created_at', { ascending: false })
+    .order('last_visit_date', { ascending: false, nullsFirst: false })
 
   if (customerType && customerType !== 'all') {
     query = query.eq('customer_type', customerType)
@@ -33,10 +33,11 @@ export async function getCustomerByPhone(tenantId, phone) {
   return { data, error }
 }
 
-export async function getCustomerById(id) {
+export async function getCustomerById(tenantId, id) {
   const { data, error } = await supabase
     .from('customers')
     .select('*')
+    .eq('tenant_id', tenantId)
     .eq('id', id)
     .single()
   return { data, error }
@@ -51,20 +52,22 @@ export async function createCustomer(customerData) {
   return { data, error }
 }
 
-export async function updateCustomer(id, customerData) {
+export async function updateCustomer(tenantId, id, customerData) {
   const { data, error } = await supabase
     .from('customers')
     .update({ ...customerData, updated_at: new Date().toISOString() })
+    .eq('tenant_id', tenantId)
     .eq('id', id)
     .select()
     .single()
   return { data, error }
 }
 
-export async function deleteCustomer(id) {
+export async function deleteCustomer(tenantId, id) {
   const { error } = await supabase
     .from('customers')
     .update({ is_active: false, updated_at: new Date().toISOString() })
+    .eq('tenant_id', tenantId)
     .eq('id', id)
   return { error }
 }

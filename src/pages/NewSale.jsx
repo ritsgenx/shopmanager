@@ -829,17 +829,23 @@ export default function NewSale() {
               <CardTitle className="text-base">Employee</CardTitle>
             </CardHeader>
             <CardContent>
-              <Select value={employeeId} onValueChange={setEmployeeId}>
-                <SelectTrigger><SelectValue placeholder="Select employee" /></SelectTrigger>
-                <SelectContent>
-                  {employees.map((emp) => (
-                    <SelectItem key={emp.id} value={emp.id}>
-                      {emp.full_name}
-                      <span className="text-muted-foreground capitalize ml-1">· {emp.role}</span>
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              {currentUser?.role === 'admin' ? (
+                <Select value={employeeId} onValueChange={setEmployeeId}>
+                  <SelectTrigger><SelectValue placeholder="Select employee" /></SelectTrigger>
+                  <SelectContent>
+                    {employees.map((emp) => (
+                      <SelectItem key={emp.id} value={emp.id}>
+                        {emp.full_name}
+                        <span className="text-muted-foreground capitalize ml-1">· {emp.role}</span>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              ) : (
+                <p className="text-sm font-medium py-2">
+                  {employees.find(e => e.id === employeeId)?.full_name ?? currentUser?.full_name ?? '—'}
+                </p>
+              )}
             </CardContent>
           </Card>
 

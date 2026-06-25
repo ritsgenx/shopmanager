@@ -4,13 +4,14 @@ import { motion, AnimatePresence } from 'framer-motion'
 import {
   LayoutDashboard, Package, ShoppingCart, Users, UserCheck,
   CalendarCheck, BarChart3, Settings, LogOut, ChevronLeft,
-  ChevronRight, Store, ShoppingBag, Wallet
+  ChevronRight, Store, ShoppingBag, Wallet, KeyRound, ShieldCheck,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useAuth } from '@/context/AuthContext'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { Separator } from '@/components/ui/separator'
 import { toast } from 'sonner'
+import ChangePasswordDialog from '@/components/shared/ChangePasswordDialog'
 
 const navItems = [
   { to: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
@@ -25,15 +26,25 @@ const navItems = [
   { to: '/settings', icon: Settings, label: 'Settings', adminOnly: true },
 ]
 
+const superAdminNav = [
+  { to: '/super-admin', icon: ShieldCheck, label: 'Platform Admin' },
+]
+
 export default function Sidebar() {
   const [collapsed, setCollapsed] = useState(false)
   const { currentUser, currentTenant, logout } = useAuth()
   const navigate = useNavigate()
 
-  const shopName = currentTenant?.name ?? 'MobileShop'
+  const isSuperAdmin = currentUser?.role === 'super_admin'
+  const shopName = isSuperAdmin ? 'Platform Admin' : (currentTenant?.shop_name ?? 'MobileShop')
+  const shopSubtitle = isSuperAdmin ? 'SaaS Administration' : 'Management System'
   const userName = currentUser?.full_name ?? currentUser?.email ?? 'User'
-  const userRole = currentUser?.role ?? 'Staff'
+  const userRole = isSuperAdmin ? 'Super Admin' : (currentUser?.role ?? 'Staff')
   const avatarInitials = userName.slice(0, 2).toUpperCase()
+  const employeeDisplayId = currentUser?.role === 'employee' && currentUser?.id
+    ? `EMP-${currentUser.id.slice(0, 6).toUpperCase()}`
+    : null
+  const activeNav = isSuperAdmin ? superAdminNav : navItems
 
   const handleSignOut = async () => {
     try {
@@ -66,7 +77,7 @@ export default function Sidebar() {
               className="overflow-hidden"
             >
               <p className="text-sm font-bold text-white whitespace-nowrap">{shopName}</p>
-              <p className="text-xs text-slate-400 whitespace-nowrap">Management System</p>
+              <p className="text-xs text-slate-400 whitespace-nowrap">{shopSubtitle}</p>
             </motion.div>
           )}
         </AnimatePresence>
@@ -83,7 +94,7 @@ export default function Sidebar() {
       {/* Nav items */}
       <nav className="flex-1 py-4 overflow-y-auto overflow-x-hidden">
         <ul className="space-y-1 px-2">
-          {navItems.filter(item => !(item.adminOnly && currentUser?.role === 'employee')).map(({ to, icon: Icon, label }) => (
+          {activeNav.filter(item => !(item.adminOnly && currentUser?.role === 'employee')).map(({ to, icon: Icon, label }) => (
             <li key={to}>
               <NavLink
                 to={to}
@@ -136,10 +147,36 @@ export default function Sidebar() {
               >
                 <p className="text-xs font-medium text-white truncate">{userName}</p>
                 <p className="text-xs text-slate-400 capitalize">{userRole}</p>
+                {employeeDisplayId && (
+                  <p className="text-xs text-indigo-400 font-mono mt-0.5">{employeeDisplayId}</p>
+                )}
               </motion.div>
             )}
           </AnimatePresence>
         </div>
+
+        <ChangePasswordDialog
+          trigger={
+            <button
+              type="button"
+              className="flex items-center gap-3 w-full px-3 py-2.5 rounded-lg text-sm text-slate-400 hover:bg-slate-800 hover:text-white transition-colors"
+            >
+              <KeyRound className="w-5 h-5 shrink-0" />
+              <AnimatePresence>
+                {!collapsed && (
+                  <motion.span
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                    className="whitespace-nowrap"
+                  >
+                    Change Password
+                  </motion.span>
+                )}
+              </AnimatePresence>
+            </button>
+          }
+        />
 
         <button
           onClick={handleSignOut}

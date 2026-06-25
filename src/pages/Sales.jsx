@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react'
+﻿import React, { useState, useEffect, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { Plus, Search, Trash2, Download, Loader2 } from 'lucide-react'
@@ -107,7 +107,8 @@ export default function Sales() {
     return sales.filter((s) =>
       s.invoice_number?.toLowerCase().includes(q) ||
       s.customers?.full_name?.toLowerCase().includes(q) ||
-      s.customers?.company_name?.toLowerCase().includes(q)
+      s.customers?.company_name?.toLowerCase().includes(q) ||
+      s.customers?.phone?.includes(q)
     )
   }, [sales, search])
 
@@ -115,7 +116,7 @@ export default function Sales() {
     setDetailId(id)
     setDetailData(null)
     setDetailLoading(true)
-    const { data } = await getSaleById(id)
+    const { data } = await getSaleById(tenantId, id)
     setDetailData(data)
     setDetailLoading(false)
   }
@@ -139,7 +140,7 @@ export default function Sales() {
   const handleDelete = async () => {
     if (!deleteTarget) return
     setDeleting(true)
-    const { error } = await deleteSale(deleteTarget.id)
+    const { error } = await deleteSale(tenantId, deleteTarget.id)
     setDeleting(false)
     if (error) {
       toast.error('Failed to delete sale')
@@ -198,7 +199,7 @@ export default function Sales() {
           <Input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search invoice or customer..."
+            placeholder="Search invoice, customer or phone..."
             className="pl-9"
           />
         </div>
@@ -297,7 +298,7 @@ export default function Sales() {
 
       {/* ── Detail Dialog ─────────────────────────────────────────────────── */}
       <Dialog open={Boolean(detailId)} onOpenChange={() => { setDetailId(null); setDetailData(null) }}>
-        <DialogContent className="max-w-2xl p-0 max-h-[90vh] overflow-y-auto">
+        <DialogContent className="max-w-2xl p-0 max-h-[90vh] overflow-y-auto" onInteractOutside={(e) => e.preventDefault()}>
           {detailLoading || !detailData ? (
             <div className="p-8 flex items-center justify-center">
               <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
@@ -439,7 +440,7 @@ export default function Sales() {
 
       {/* ── Delete Confirmation ────────────────────────────────────────────── */}
       <Dialog open={Boolean(deleteTarget)} onOpenChange={() => setDeleteTarget(null)}>
-        <DialogContent className="max-w-sm p-6">
+        <DialogContent className="max-w-sm p-6" onInteractOutside={(e) => e.preventDefault()}>
           <DialogHeader>
             <DialogTitle>Delete Sale?</DialogTitle>
           </DialogHeader>

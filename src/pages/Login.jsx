@@ -26,13 +26,13 @@ export default function Login() {
       return
     }
     setSubmitting(true)
-    const { error } = await signIn(email, password)
+    const { error, user } = await signIn(email, password)
     setSubmitting(false)
     if (error) {
       toast.error(error.message ?? 'Invalid credentials')
     } else {
       toast.success('Welcome back!')
-      navigate('/dashboard', { replace: true })
+      navigate(user?.role === 'super_admin' ? '/super-admin' : '/dashboard', { replace: true })
     }
   }
 

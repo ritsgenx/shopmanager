@@ -20,11 +20,12 @@ function deriveStatus(isoTime) {
   return h < 10 || (h === 10 && m <= 30) ? 'present' : 'late'
 }
 
-export async function getTodayAttendance(userId) {
+export async function getTodayAttendance(tenantId, userId) {
   const today = new Date().toISOString().split('T')[0]
   const { data, error } = await supabase
     .from('attendance')
     .select('*')
+    .eq('tenant_id', tenantId)
     .eq('user_id', userId)
     .eq('attendance_date', today)
     .maybeSingle()
@@ -63,7 +64,7 @@ export async function checkIn(userId, tenantId, lat, lng, shopLat, shopLng, geoR
   return { data, error }
 }
 
-export async function checkOut(attendanceId, lat, lng, shopLat, shopLng, geoRadius, checkInTime) {
+export async function checkOut(tenantId, attendanceId, lat, lng, shopLat, shopLng, geoRadius, checkInTime) {
   const distance = calculateDistance(lat, lng, shopLat, shopLng)
   if (distance > geoRadius) {
     return {
@@ -75,29 +76,27 @@ export async function checkOut(attendanceId, lat, lng, shopLat, shopLng, geoRadi
 
   const now = new Date()
   const checkOutTime = now.toISOString()
-
   const totalSecs = (now - new Date(checkInTime)) / 1000
   const totalHours = parseFloat(Math.max(0, totalSecs / 3600).toFixed(2))
 
   const { data, error } = await supabase
     .from('attendance')
     .update({ check_out_time: checkOutTime, check_out_lat: lat, check_out_lng: lng, total_hours: totalHours })
+    .eq('tenant_id', tenantId)
     .eq('id', attendanceId)
     .select()
     .maybeSingle()
-  if (!error && !data) {
-    return { error: { message: 'Check-out not saved — missing RLS UPDATE policy on attendance table.' } }
-  }
   return { data, error }
 }
 
-export async function getAttendanceByUser(userId, year, month) {
+export async function getAttendanceByUser(tenantId, userId, year, month) {
   const pad = (n) => String(n).padStart(2, '0')
   const from = `${year}-${pad(month)}-01`
   const to = `${year}-${pad(month)}-${new Date(year, month, 0).getDate()}`
   const { data, error } = await supabase
     .from('attendance')
     .select('*')
+    .eq('tenant_id', tenantId)
     .eq('user_id', userId)
     .gte('attendance_date', from)
     .lte('attendance_date', to)
@@ -129,10 +128,11 @@ export async function getMonthlyAttendanceByTenant(tenantId, year, month) {
   return { data: data ?? [], error }
 }
 
-export async function overrideAttendance(attendanceId, status, overrideReason) {
+export async function overrideAttendance(tenantId, attendanceId, status, overrideReason) {
   const { data, error } = await supabase
     .from('attendance')
     .update({ status, override_reason: overrideReason })
+    .eq('tenant_id', tenantId)
     .eq('id', attendanceId)
     .select()
     .maybeSingle()

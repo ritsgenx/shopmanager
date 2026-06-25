@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react'
+﻿import React, { useState, useEffect, useMemo } from 'react'
 import { motion } from 'framer-motion'
 import {
   Plus, Search, Pencil, Trash2, Cake, Loader2,
@@ -138,7 +138,7 @@ export default function Customers() {
   const handleDelete = async () => {
     if (!deleteTarget) return
     setDeleting(true)
-    const { error } = await deleteCustomer(deleteTarget.id)
+    const { error } = await deleteCustomer(tenantId, deleteTarget.id)
     setDeleting(false)
     if (error) {
       toast.error('Failed to delete customer')
@@ -370,7 +370,7 @@ export default function Customers() {
 
       {/* Customer Detail Dialog */}
       <Dialog open={Boolean(detailCustomer)} onOpenChange={() => setDetailCustomer(null)}>
-        <DialogContent className="max-w-md p-0 overflow-hidden max-h-[90vh] overflow-y-auto">
+        <DialogContent className="max-w-md p-0 overflow-hidden max-h-[90vh] overflow-y-auto" onInteractOutside={(e) => e.preventDefault()}>
           {detailCustomer && (
             <>
               {/* Coloured header */}
@@ -443,7 +443,7 @@ export default function Customers() {
 
       {/* Delete Confirmation */}
       <Dialog open={Boolean(deleteTarget)} onOpenChange={() => setDeleteTarget(null)}>
-        <DialogContent className="max-w-sm p-6">
+        <DialogContent className="max-w-sm p-6" onInteractOutside={(e) => e.preventDefault()}>
           <DialogHeader>
             <DialogTitle>Delete Customer?</DialogTitle>
           </DialogHeader>

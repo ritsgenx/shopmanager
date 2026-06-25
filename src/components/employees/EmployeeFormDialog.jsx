@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react'
+﻿import React, { useEffect } from 'react'
 import { useForm, Controller, useWatch } from 'react-hook-form'
 import { Loader2, Info } from 'lucide-react'
 import { toast } from 'sonner'
@@ -199,7 +199,7 @@ export default function EmployeeFormDialog({ open, onOpenChange, employee, onSuc
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+      <DialogContent className="max-w-2xl w-full max-h-[90vh] overflow-y-auto" onInteractOutside={(e) => e.preventDefault()}>
         <div className="px-6 pt-6 pb-2">
           <DialogHeader>
             <DialogTitle>{isEdit ? 'Edit Employee' : 'Add Employee'}</DialogTitle>

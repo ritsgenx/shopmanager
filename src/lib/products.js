@@ -18,20 +18,22 @@ export async function createProduct(productData) {
   return { data, error }
 }
 
-export async function updateProduct(id, productData) {
+export async function updateProduct(tenantId, id, productData) {
   const { data, error } = await supabase
     .from('products')
     .update(productData)
+    .eq('tenant_id', tenantId)
     .eq('id', id)
     .select()
     .single()
   return { data, error }
 }
 
-export async function deleteProduct(id) {
+export async function deleteProduct(tenantId, id) {
   const { error } = await supabase
     .from('products')
     .delete()
+    .eq('tenant_id', tenantId)
     .eq('id', id)
   return { error }
 }

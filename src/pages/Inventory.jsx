@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react'
+﻿import React, { useState, useEffect, useMemo } from 'react'
 import { motion } from 'framer-motion'
 import { Plus, Search, Pencil, Trash2, Package, AlertCircle, Loader2 } from 'lucide-react'
 import { toast } from 'sonner'
@@ -79,7 +79,7 @@ export default function Inventory() {
   const handleDelete = async () => {
     if (!deleteItem) return
     setDeleting(true)
-    const { error } = await deleteInventory(deleteItem.id)
+    const { error } = await deleteInventory(tenantId, deleteItem.id)
     setDeleting(false)
     if (error) {
       toast.error('Failed to delete item')
@@ -305,7 +305,7 @@ export default function Inventory() {
         open={!!deleteItem}
         onOpenChange={(open) => { if (!open) setDeleteItem(null) }}
       >
-        <DialogContent className="bg-slate-800 border-slate-700 text-white max-w-sm p-6">
+        <DialogContent className="bg-slate-800 border-slate-700 text-white max-w-sm p-6" onInteractOutside={(e) => e.preventDefault()}>
           <DialogHeader>
             <DialogTitle className="text-white">Delete Item</DialogTitle>
           </DialogHeader>

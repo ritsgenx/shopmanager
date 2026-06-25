@@ -14,7 +14,7 @@ export async function getPurchases(tenantId, purchaseType = null) {
   return { data: data ?? [], error }
 }
 
-export async function getPurchaseById(id) {
+export async function getPurchaseById(tenantId, id) {
   const { data, error } = await supabase
     .from('purchases')
     .select(`
@@ -24,6 +24,7 @@ export async function getPurchaseById(id) {
         products ( brand, model, variant, color, gst_rate )
       )
     `)
+    .eq('tenant_id', tenantId)
     .eq('id', id)
     .single()
   return { data, error }
@@ -70,10 +71,11 @@ export async function createPurchase(headerData, lineItems, tenantId) {
   return { data: purchase }
 }
 
-export async function deletePurchase(id) {
+export async function deletePurchase(tenantId, id) {
   const { error } = await supabase
     .from('purchases')
     .delete()
+    .eq('tenant_id', tenantId)
     .eq('id', id)
   return { error }
 }

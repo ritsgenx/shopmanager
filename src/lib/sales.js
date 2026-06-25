@@ -45,7 +45,7 @@ export async function getSales(tenantId, filters = {}) {
   return { data: data ?? [], error }
 }
 
-export async function getSaleById(id) {
+export async function getSaleById(tenantId, id) {
   const { data, error } = await supabase
     .from('sales')
     .select(`
@@ -56,6 +56,7 @@ export async function getSaleById(id) {
         products ( brand, model, variant, color, category, hsn_code, gst_rate )
       )
     `)
+    .eq('tenant_id', tenantId)
     .eq('id', id)
     .single()
   return { data, error }
@@ -162,6 +163,7 @@ export async function createSale(headerData, lineItems, { customer, tenant }) {
     const { data: inv } = await supabase
       .from('inventory')
       .select('quantity, quantity_sold')
+      .eq('tenant_id', tenantId)
       .eq('id', item.inventory_id)
       .single()
 
@@ -175,6 +177,7 @@ export async function createSale(headerData, lineItems, { customer, tenant }) {
       await supabase
         .from('inventory')
         .update({ quantity_sold: newSold, status: newStatus })
+        .eq('tenant_id', tenantId)
         .eq('id', item.inventory_id)
     }
   }
@@ -183,6 +186,7 @@ export async function createSale(headerData, lineItems, { customer, tenant }) {
   const { data: cust } = await supabase
     .from('customers')
     .select('total_purchases, visit_count')
+    .eq('tenant_id', tenantId)
     .eq('id', customer.id)
     .single()
 
@@ -195,6 +199,7 @@ export async function createSale(headerData, lineItems, { customer, tenant }) {
         last_visit_date: new Date().toISOString().split('T')[0],
         updated_at: new Date().toISOString(),
       })
+      .eq('tenant_id', tenantId)
       .eq('id', customer.id)
   }
 
@@ -209,15 +214,16 @@ export async function createSale(headerData, lineItems, { customer, tenant }) {
   }
 }
 
-export async function deleteSale(id) {
+export async function deleteSale(tenantId, id) {
   // Reverse inventory and customer stats before deleting
-  const { data: sale } = await getSaleById(id)
+  const { data: sale } = await getSaleById(tenantId, id)
 
   if (sale) {
     for (const item of sale.sale_items ?? []) {
       const { data: inv } = await supabase
         .from('inventory')
         .select('quantity, quantity_sold')
+        .eq('tenant_id', tenantId)
         .eq('id', item.inventory_id)
         .single()
 
@@ -231,6 +237,7 @@ export async function deleteSale(id) {
         await supabase
           .from('inventory')
           .update({ quantity_sold: newSold, status: newStatus })
+          .eq('tenant_id', tenantId)
           .eq('id', item.inventory_id)
       }
     }
@@ -238,6 +245,7 @@ export async function deleteSale(id) {
     const { data: cust } = await supabase
       .from('customers')
       .select('total_purchases, visit_count')
+      .eq('tenant_id', tenantId)
       .eq('id', sale.customer_id)
       .single()
 
@@ -249,12 +257,13 @@ export async function deleteSale(id) {
           visit_count: Math.max(0, (cust.visit_count || 0) - 1),
           updated_at: new Date().toISOString(),
         })
+        .eq('tenant_id', tenantId)
         .eq('id', sale.customer_id)
     }
   }
 
   // Delete sale items first, then sale
-  await supabase.from('sale_items').delete().eq('sale_id', id)
-  const { error } = await supabase.from('sales').delete().eq('id', id)
+  await supabase.from('sale_items').delete().eq('tenant_id', tenantId).eq('sale_id', id)
+  const { error } = await supabase.from('sales').delete().eq('tenant_id', tenantId).eq('id', id)
   return { error }
 }

@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react'
+﻿import React, { useEffect } from 'react'
 import { useForm, Controller } from 'react-hook-form'
 import { Loader2 } from 'lucide-react'
 import { toast } from 'sonner'
@@ -109,7 +109,7 @@ export default function CustomerDialog({ open, onOpenChange, customer, onSuccess
     }
 
     const { error } = isEdit
-      ? await updateCustomer(customer.id, payload)
+      ? await updateCustomer(currentTenant.id, customer.id, payload)
       : await createCustomer(payload)
 
     if (error) {
@@ -123,7 +123,7 @@ export default function CustomerDialog({ open, onOpenChange, customer, onSuccess
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-xl w-full max-h-[90vh] overflow-y-auto">
+      <DialogContent className="max-w-xl w-full max-h-[90vh] overflow-y-auto" onInteractOutside={(e) => e.preventDefault()}>
         <div className="px-6 pt-6 pb-2">
           <DialogHeader>
             <DialogTitle>{isEdit ? 'Edit Customer' : 'Add Customer'}</DialogTitle>

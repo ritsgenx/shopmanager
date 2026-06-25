@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react'
+﻿import React, { useState, useEffect, useCallback } from 'react'
 import { motion } from 'framer-motion'
 import { ChevronLeft, ChevronRight, RefreshCw, AlertCircle, Check, Clock, X } from 'lucide-react'
 import { toast } from 'sonner'
@@ -74,7 +74,7 @@ function OverrideDialog({ open, onOpenChange, record, userId, tenantId, onSucces
 
     let result
     if (record?.id) {
-      result = await overrideAttendance(record.id, status, reason.trim())
+      result = await overrideAttendance(tenantId, record.id, status, reason.trim())
     } else {
       // Create a new manual attendance row for this date
       result = await createManualAttendance(tenantId, userId, record?.date, status, reason.trim())
@@ -89,7 +89,7 @@ function OverrideDialog({ open, onOpenChange, record, userId, tenantId, onSucces
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-sm w-full">
+      <DialogContent className="max-w-sm w-full" onInteractOutside={(e) => e.preventDefault()}>
         <div className="px-6 pt-6 pb-2">
           <DialogHeader>
             <DialogTitle>Override Attendance</DialogTitle>
@@ -136,7 +136,7 @@ function OverrideDialog({ open, onOpenChange, record, userId, tenantId, onSucces
 }
 
 // ── My Attendance view (all users) ───────────────────────────────────────────
-function MyAttendanceView({ userId }) {
+function MyAttendanceView({ userId, tenantId }) {
   const now = new Date()
   const [year, setYear]   = useState(now.getFullYear())
   const [month, setMonth] = useState(now.getMonth() + 1)
@@ -145,7 +145,7 @@ function MyAttendanceView({ userId }) {
 
   const load = useCallback(async () => {
     setLoading(true)
-    const { data } = await getAttendanceByUser(userId, year, month)
+    const { data } = await getAttendanceByUser(tenantId, userId, year, month)
     setRecords(data ?? [])
     setLoading(false)
   }, [userId, year, month])
@@ -515,7 +515,7 @@ export default function Attendance() {
               <TabsTrigger value="overview">All Staff</TabsTrigger>
             </TabsList>
             <TabsContent value="mine">
-              <MyAttendanceView userId={currentUser?.id} />
+              <MyAttendanceView userId={currentUser?.id} tenantId={currentTenant?.id} />
             </TabsContent>
             <TabsContent value="overview">
               <AdminAttendanceView tenantId={currentTenant?.id} currentUserId={currentUser?.id} />
@@ -523,7 +523,7 @@ export default function Attendance() {
           </Tabs>
         </div>
       ) : (
-        <MyAttendanceView userId={currentUser?.id} />
+        <MyAttendanceView userId={currentUser?.id} tenantId={currentTenant?.id} />
       )}
     </motion.div>
   )

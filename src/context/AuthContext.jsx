@@ -12,27 +12,40 @@ async function fetchProfile(userId) {
 
   if (userError) {
     console.error('[AuthContext] users table error:', userError.message)
-    return { user: null, tenant: null }
+    return { user: null, tenant: null, permissions: null }
   }
 
-  if (!userRow) return { user: null, tenant: null }
+  if (!userRow) return { user: null, tenant: null, permissions: null }
 
-  const { data: tenantRow, error: tenantError } = await supabase
-    .from('tenants')
-    .select('*')
-    .eq('id', userRow.tenant_id)
-    .single()
+  // Super admin has no tenant or permissions
+  if (userRow.role === 'super_admin') {
+    return { user: userRow, tenant: null, permissions: null }
+  }
+
+  const [{ data: tenantRow, error: tenantError }, { data: permRow }] = await Promise.all([
+    supabase.from('tenants').select('*').eq('id', userRow.tenant_id).single(),
+    userRow.role !== 'admin'
+      ? supabase.from('employee_permissions').select('*').eq('user_id', userId).maybeSingle()
+      : Promise.resolve({ data: null }),
+  ])
 
   if (tenantError) {
     console.error('[AuthContext] tenants table error:', tenantError.message)
   }
 
-  return { user: userRow, tenant: tenantRow ?? null }
+  // Block login if tenant has been deactivated
+  if (tenantRow && !tenantRow.is_active) {
+    await supabase.auth.signOut()
+    return { user: null, tenant: null, permissions: null, suspended: true }
+  }
+
+  return { user: userRow, tenant: tenantRow ?? null, permissions: permRow ?? null }
 }
 
 export function AuthProvider({ children }) {
   const [currentUser, setCurrentUser] = useState(null)
   const [currentTenant, setCurrentTenant] = useState(null)
+  const [currentPermissions, setCurrentPermissions] = useState(null)
   const [isLoading, setIsLoading] = useState(true)
 
   const isAuthenticated = !!currentUser
@@ -41,9 +54,10 @@ export function AuthProvider({ children }) {
     // Restore session on page refresh
     supabase.auth.getSession().then(async ({ data: { session } }) => {
       if (session?.user) {
-        const { user, tenant } = await fetchProfile(session.user.id)
+        const { user, tenant, permissions } = await fetchProfile(session.user.id)
         setCurrentUser(user)
         setCurrentTenant(tenant)
+        setCurrentPermissions(permissions)
       }
       setIsLoading(false)
     })
@@ -53,6 +67,7 @@ export function AuthProvider({ children }) {
       if (event === 'SIGNED_OUT') {
         setCurrentUser(null)
         setCurrentTenant(null)
+        setCurrentPermissions(null)
       }
     })
 
@@ -64,9 +79,13 @@ export function AuthProvider({ children }) {
     const { data, error } = await supabase.auth.signInWithPassword({ email, password })
     if (error) return { error }
 
-    const { user, tenant } = await fetchProfile(data.user.id)
+    const { user, tenant, permissions, suspended } = await fetchProfile(data.user.id)
+
+    if (suspended) {
+      return { error: { message: 'Your account has been suspended. Please contact support.' } }
+    }
+
     if (!user) {
-      // Auth passed but no row in our users table — sign back out so session isn't dangling
       await supabase.auth.signOut()
       return {
         error: {
@@ -77,12 +96,13 @@ export function AuthProvider({ children }) {
 
     setCurrentUser(user)
     setCurrentTenant(tenant)
-    return { data }
+    setCurrentPermissions(permissions)
+    return { data, user }
   }
 
   const logout = async () => {
     await supabase.auth.signOut()
-    // SIGNED_OUT handler above clears currentUser / currentTenant
+    // SIGNED_OUT handler above clears currentUser / currentTenant / currentPermissions
   }
 
   // Re-fetches the tenant row and updates context — call after saving settings
@@ -96,7 +116,9 @@ export function AuthProvider({ children }) {
     if (data) setCurrentTenant(data)
   }
 
-  const value = { currentUser, currentTenant, isLoading, isAuthenticated, signIn, logout, refreshTenant }
+  const isSuperAdmin = currentUser?.role === 'super_admin'
+
+  const value = { currentUser, currentTenant, currentPermissions, isSuperAdmin, isLoading, isAuthenticated, signIn, logout, refreshTenant }
 
   return (
     <AuthContext.Provider value={value}>

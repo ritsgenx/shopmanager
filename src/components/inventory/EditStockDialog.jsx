@@ -1,8 +1,9 @@
-import React, { useEffect } from 'react'
+﻿import React, { useEffect } from 'react'
 import { useForm, Controller } from 'react-hook-form'
 import { Loader2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { updateInventory } from '@/lib/inventory'
+import { useAuth } from '@/context/AuthContext'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -14,6 +15,7 @@ import {
 } from '@/components/ui/select'
 
 export default function EditStockDialog({ open, onOpenChange, item, onSuccess }) {
+  const { currentTenant } = useAuth()
   const {
     register, control, handleSubmit, reset,
     formState: { errors, isSubmitting },
@@ -33,7 +35,7 @@ export default function EditStockDialog({ open, onOpenChange, item, onSuccess })
   }, [item, reset])
 
   const onSubmit = async (values) => {
-    const { error } = await updateInventory(item.id, {
+    const { error } = await updateInventory(currentTenant.id, item.id, {
       purchase_price: Number(values.purchase_price),
       selling_price: Number(values.selling_price),
       quantity: Number(values.quantity),
@@ -58,7 +60,7 @@ export default function EditStockDialog({ open, onOpenChange, item, onSuccess })
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="bg-slate-800 border-slate-700 text-white max-w-md p-6">
+      <DialogContent className="bg-slate-800 border-slate-700 text-white max-w-md p-6" onInteractOutside={(e) => e.preventDefault()}>
         <DialogHeader>
           <DialogTitle className="text-white text-lg">Edit Stock</DialogTitle>
           {productLabel && (

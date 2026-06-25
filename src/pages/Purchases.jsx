@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react'
+﻿import React, { useState, useEffect } from 'react'
 import { useNavigate, Navigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { Plus, ReceiptText, AlertCircle, Loader2, Trash2 } from 'lucide-react'
@@ -80,7 +80,7 @@ export default function Purchases() {
   const openDetail = async (purchase) => {
     setDetailOpen(true)
     setDetailLoading(true)
-    const { data, error } = await getPurchaseById(purchase.id)
+    const { data, error } = await getPurchaseById(tenantId, purchase.id)
     setDetailLoading(false)
     if (error) {
       toast.error('Failed to load details')
@@ -93,7 +93,7 @@ export default function Purchases() {
   const handleDelete = async () => {
     if (!deleteItem) return
     setDeleting(true)
-    const { error } = await deletePurchase(deleteItem.id)
+    const { error } = await deletePurchase(tenantId, deleteItem.id)
     setDeleting(false)
     if (error) {
       toast.error('Failed to delete purchase')
@@ -264,7 +264,7 @@ export default function Purchases() {
 
       {/* Detail Dialog */}
       <Dialog open={detailOpen} onOpenChange={(o) => { if (!o) { setDetailOpen(false); setDetailData(null) } }}>
-        <DialogContent className="bg-slate-800 border-slate-700 text-white max-w-2xl max-h-[90vh] overflow-y-auto p-6">
+        <DialogContent className="bg-slate-800 border-slate-700 text-white max-w-2xl max-h-[90vh] overflow-y-auto p-6" onInteractOutside={(e) => e.preventDefault()}>
           {detailLoading || !detailData ? (
             <div className="flex items-center justify-center py-16">
               <Loader2 className="w-8 h-8 animate-spin text-indigo-400" />
@@ -390,7 +390,7 @@ export default function Purchases() {
 
       {/* Delete Confirmation */}
       <Dialog open={!!deleteItem} onOpenChange={(o) => { if (!o) setDeleteItem(null) }}>
-        <DialogContent className="bg-slate-800 border-slate-700 text-white max-w-sm p-6">
+        <DialogContent className="bg-slate-800 border-slate-700 text-white max-w-sm p-6" onInteractOutside={(e) => e.preventDefault()}>
           <DialogHeader>
             <DialogTitle className="text-white">Delete Purchase</DialogTitle>
           </DialogHeader>

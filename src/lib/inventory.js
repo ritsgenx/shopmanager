@@ -21,20 +21,22 @@ export async function createInventory(inventoryData) {
   return { data, error }
 }
 
-export async function updateInventory(id, inventoryData) {
+export async function updateInventory(tenantId, id, inventoryData) {
   const { data, error } = await supabase
     .from('inventory')
     .update(inventoryData)
+    .eq('tenant_id', tenantId)
     .eq('id', id)
     .select()
     .single()
   return { data, error }
 }
 
-export async function deleteInventory(id) {
+export async function deleteInventory(tenantId, id) {
   const { error } = await supabase
     .from('inventory')
     .delete()
+    .eq('tenant_id', tenantId)
     .eq('id', id)
   return { error }
 }
