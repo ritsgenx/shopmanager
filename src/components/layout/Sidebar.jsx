@@ -4,7 +4,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import {
   LayoutDashboard, Package, ShoppingCart, Users, UserCheck,
   CalendarCheck, BarChart3, Settings, LogOut, ChevronLeft,
-  ChevronRight, Store, ShoppingBag, Wallet, KeyRound, ShieldCheck,
+  ChevronRight, Store, ShoppingBag, Wallet, KeyRound, ShieldCheck, X,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useAuth } from '@/context/AuthContext'
@@ -20,9 +20,9 @@ const navItems = [
   { to: '/sales', icon: ShoppingCart, label: 'Sales' },
   { to: '/customers', icon: Users, label: 'Customers' },
   { to: '/employees', icon: UserCheck, label: 'Employees' },
-  { to: '/attendance',   icon: CalendarCheck, label: 'Attendance' },
-  { to: '/commissions',  icon: Wallet,        label: 'Commissions' },
-  { to: '/reports',      icon: BarChart3,     label: 'Reports' },
+  { to: '/attendance', icon: CalendarCheck, label: 'Attendance' },
+  { to: '/commissions', icon: Wallet, label: 'Commissions' },
+  { to: '/reports', icon: BarChart3, label: 'Reports' },
   { to: '/settings', icon: Settings, label: 'Settings', adminOnly: true },
 ]
 
@@ -30,7 +30,7 @@ const superAdminNav = [
   { to: '/super-admin', icon: ShieldCheck, label: 'Platform Admin' },
 ]
 
-export default function Sidebar() {
+export default function Sidebar({ mobileOpen, onClose }) {
   const [collapsed, setCollapsed] = useState(false)
   const { currentUser, currentTenant, logout } = useAuth()
   const navigate = useNavigate()
@@ -60,7 +60,15 @@ export default function Sidebar() {
     <motion.aside
       animate={{ width: collapsed ? 72 : 240 }}
       transition={{ duration: 0.3, ease: 'easeInOut' }}
-      className="relative flex flex-col h-screen bg-slate-900 text-white shadow-xl shrink-0 overflow-hidden"
+      className={cn(
+        // Base styles
+        'relative flex flex-col h-screen bg-slate-900 text-white shadow-xl overflow-hidden',
+        // Mobile: fixed overlay that slides in/out
+        'fixed inset-y-0 left-0 z-30 transition-transform duration-300 ease-in-out',
+        mobileOpen ? 'translate-x-0' : '-translate-x-full',
+        // Desktop: back to normal flow, always visible
+        'md:relative md:translate-x-0 md:z-auto md:transition-none md:shrink-0'
+      )}
     >
       {/* Header */}
       <div className="flex items-center gap-3 px-4 py-5 border-b border-slate-700">
@@ -74,19 +82,26 @@ export default function Sidebar() {
               animate={{ opacity: 1, x: 0 }}
               exit={{ opacity: 0, x: -10 }}
               transition={{ duration: 0.2 }}
-              className="overflow-hidden"
+              className="overflow-hidden flex-1"
             >
               <p className="text-sm font-bold text-white whitespace-nowrap">{shopName}</p>
               <p className="text-xs text-slate-400 whitespace-nowrap">{shopSubtitle}</p>
             </motion.div>
           )}
         </AnimatePresence>
+        {/* Close button — mobile only */}
+        <button
+          onClick={onClose}
+          className="md:hidden ml-auto p-1 rounded-md text-slate-400 hover:text-white hover:bg-slate-700 transition-colors"
+        >
+          <X className="w-5 h-5" />
+        </button>
       </div>
 
-      {/* Toggle button */}
+      {/* Collapse toggle — desktop only */}
       <button
         onClick={() => setCollapsed(!collapsed)}
-        className="absolute -right-3 top-16 z-10 flex items-center justify-center w-6 h-6 rounded-full bg-indigo-500 hover:bg-indigo-600 transition-colors shadow-lg"
+        className="absolute -right-3 top-16 z-10 hidden md:flex items-center justify-center w-6 h-6 rounded-full bg-indigo-500 hover:bg-indigo-600 transition-colors shadow-lg"
       >
         {collapsed ? <ChevronRight className="w-3 h-3" /> : <ChevronLeft className="w-3 h-3" />}
       </button>
@@ -94,36 +109,39 @@ export default function Sidebar() {
       {/* Nav items */}
       <nav className="flex-1 py-4 overflow-y-auto overflow-x-hidden">
         <ul className="space-y-1 px-2">
-          {activeNav.filter(item => !(item.adminOnly && currentUser?.role === 'employee')).map(({ to, icon: Icon, label }) => (
-            <li key={to}>
-              <NavLink
-                to={to}
-                className={({ isActive }) =>
-                  cn(
-                    'flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-200 group',
-                    isActive
-                      ? 'bg-indigo-500 text-white shadow-md'
-                      : 'text-slate-400 hover:bg-slate-800 hover:text-white'
-                  )
-                }
-              >
-                <Icon className="w-5 h-5 shrink-0" />
-                <AnimatePresence>
-                  {!collapsed && (
-                    <motion.span
-                      initial={{ opacity: 0, x: -10 }}
-                      animate={{ opacity: 1, x: 0 }}
-                      exit={{ opacity: 0, x: -10 }}
-                      transition={{ duration: 0.2 }}
-                      className="whitespace-nowrap"
-                    >
-                      {label}
-                    </motion.span>
-                  )}
-                </AnimatePresence>
-              </NavLink>
-            </li>
-          ))}
+          {activeNav
+            .filter(item => !(item.adminOnly && currentUser?.role === 'employee'))
+            .map(({ to, icon: Icon, label }) => (
+              <li key={to}>
+                <NavLink
+                  to={to}
+                  onClick={onClose}
+                  className={({ isActive }) =>
+                    cn(
+                      'flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-200',
+                      isActive
+                        ? 'bg-indigo-500 text-white shadow-md'
+                        : 'text-slate-400 hover:bg-slate-800 hover:text-white'
+                    )
+                  }
+                >
+                  <Icon className="w-5 h-5 shrink-0" />
+                  <AnimatePresence>
+                    {!collapsed && (
+                      <motion.span
+                        initial={{ opacity: 0, x: -10 }}
+                        animate={{ opacity: 1, x: 0 }}
+                        exit={{ opacity: 0, x: -10 }}
+                        transition={{ duration: 0.2 }}
+                        className="whitespace-nowrap"
+                      >
+                        {label}
+                      </motion.span>
+                    )}
+                  </AnimatePresence>
+                </NavLink>
+              </li>
+            ))}
         </ul>
       </nav>
 

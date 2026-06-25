@@ -1,6 +1,6 @@
 import React from 'react'
 import { useLocation } from 'react-router-dom'
-import { Bell, Search } from 'lucide-react'
+import { Bell, Search, Menu } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 
@@ -16,17 +16,28 @@ const pageLabels = {
   '/super-admin': 'Platform Administration',
 }
 
-export default function Navbar() {
+export default function Navbar({ onMenuClick }) {
   const location = useLocation()
   const title = pageLabels[location.pathname] ?? 'MobileShop'
 
   return (
-    <header className="flex items-center justify-between px-6 py-4 bg-white border-b border-border shadow-sm">
-      <div>
-        <h1 className="text-xl font-semibold text-foreground">{title}</h1>
-        <p className="text-xs text-muted-foreground">
-          {new Date().toLocaleDateString('en-IN', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
-        </p>
+    <header className="flex items-center justify-between px-4 md:px-6 py-4 bg-white border-b border-border shadow-sm">
+      <div className="flex items-center gap-3">
+        {/* Hamburger — mobile only */}
+        <Button
+          variant="ghost"
+          size="icon"
+          className="md:hidden shrink-0"
+          onClick={onMenuClick}
+        >
+          <Menu className="w-5 h-5" />
+        </Button>
+        <div>
+          <h1 className="text-xl font-semibold text-foreground">{title}</h1>
+          <p className="text-xs text-muted-foreground hidden sm:block">
+            {new Date().toLocaleDateString('en-IN', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
+          </p>
+        </div>
       </div>
 
       <div className="flex items-center gap-3">
