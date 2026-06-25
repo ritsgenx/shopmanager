@@ -215,7 +215,7 @@ export default function Sales() {
               value={searchInput}
               onChange={e => setSearchInput(e.target.value)}
               onKeyDown={e => e.key === 'Enter' && handleSearch()}
-              placeholder="Search invoice number… (Enter)"
+              placeholder="Search invoice, name or phone… (Enter)"
               className="pl-9 pr-8"
             />
             {searchInput && (
@@ -253,7 +253,7 @@ export default function Sales() {
             ) : sales.length === 0 ? (
               <tr>
                 <td colSpan={8} className="px-4 py-16 text-center text-muted-foreground text-sm">
-                  {appliedSearch ? `No invoices match "${appliedSearch}"` : 'No sales yet — create your first one'}
+                  {appliedSearch ? `No sales match "${appliedSearch}"` : 'No sales yet — create your first one'}
                 </td>
               </tr>
             ) : sales.map((sale) => (
@@ -296,7 +296,7 @@ export default function Sales() {
           ))
         ) : sales.length === 0 ? (
           <p className="text-center py-12 text-muted-foreground text-sm">
-            {appliedSearch ? `No invoices match "${appliedSearch}"` : 'No sales yet — create your first one'}
+            {appliedSearch ? `No sales match "${appliedSearch}"` : 'No sales yet — create your first one'}
           </p>
         ) : sales.map((sale) => (
           <div

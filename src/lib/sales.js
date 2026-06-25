@@ -45,7 +45,24 @@ export async function getSales(tenantId, filters = {}) {
   if (filters.customerId) query = query.eq('customer_id', filters.customerId)
   if (filters.dateFrom)   query = query.gte('sale_date', filters.dateFrom)
   if (filters.dateTo)     query = query.lte('sale_date', filters.dateTo)
-  if (searchTerm?.trim()) query = query.ilike('invoice_number', `%${searchTerm.trim()}%`)
+
+  if (searchTerm?.trim()) {
+    const term = searchTerm.trim()
+    // Find customers matching the term (name, company, phone)
+    const { data: matchedCustomers } = await supabase
+      .from('customers')
+      .select('id')
+      .eq('tenant_id', tenantId)
+      .or(`full_name.ilike.%${term}%,company_name.ilike.%${term}%,phone.ilike.%${term}%`)
+    const customerIds = matchedCustomers?.map(c => c.id) ?? []
+
+    // OR: invoice number match OR customer_id in matched list
+    if (customerIds.length > 0) {
+      query = query.or(`invoice_number.ilike.%${term}%,customer_id.in.(${customerIds.join(',')})`)
+    } else {
+      query = query.ilike('invoice_number', `%${term}%`)
+    }
+  }
 
   const { data, error, count } = await query
   return { data: data ?? [], error, count: count ?? 0 }
