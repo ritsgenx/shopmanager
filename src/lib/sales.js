@@ -30,19 +30,25 @@ async function generateInvoiceNumber(tenantId) {
 }
 
 export async function getSales(tenantId, filters = {}) {
+  const { page = 1, pageSize = 50, searchTerm } = filters
+  const from = (page - 1) * pageSize
+  const to   = from + pageSize - 1
+
   let query = supabase
     .from('sales')
-    .select(`*, customers ( full_name, company_name, customer_type, phone )`)
+    .select(`*, customers ( full_name, company_name, customer_type, phone )`, { count: 'exact' })
     .eq('tenant_id', tenantId)
     .order('created_at', { ascending: false })
+    .range(from, to)
 
   if (filters.employeeId) query = query.eq('employee_id', filters.employeeId)
   if (filters.customerId) query = query.eq('customer_id', filters.customerId)
-  if (filters.dateFrom) query = query.gte('sale_date', filters.dateFrom)
-  if (filters.dateTo) query = query.lte('sale_date', filters.dateTo)
+  if (filters.dateFrom)   query = query.gte('sale_date', filters.dateFrom)
+  if (filters.dateTo)     query = query.lte('sale_date', filters.dateTo)
+  if (searchTerm?.trim()) query = query.ilike('invoice_number', `%${searchTerm.trim()}%`)
 
-  const { data, error } = await query
-  return { data: data ?? [], error }
+  const { data, error, count } = await query
+  return { data: data ?? [], error, count: count ?? 0 }
 }
 
 export async function getCustomerSales(tenantId, customerId) {

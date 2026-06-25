@@ -1,11 +1,11 @@
 import React, { useState, useEffect, useMemo } from 'react'
 import { motion } from 'framer-motion'
 import { useNavigate } from 'react-router-dom'
-import { Plus, Search, Pencil, Trash2, Cake, Loader2 } from 'lucide-react'
+import { Plus, Search, Pencil, Trash2, Cake, Loader2, X } from 'lucide-react'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
 import { useAuth } from '@/context/AuthContext'
-import { getCustomers, deleteCustomer } from '@/lib/customers'
+import { getCustomers, getBirthdayCustomers, deleteCustomer } from '@/lib/customers'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -13,6 +13,7 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from '@/components/ui/dialog'
 import CustomerDialog from '@/components/customers/CustomerDialog'
+import Pagination, { PAGE_SIZE } from '@/components/shared/Pagination'
 
 const fmt = (n) => `₹${Number(n || 0).toLocaleString('en-IN')}`
 
@@ -48,44 +49,48 @@ export default function Customers() {
 
   const [customers, setCustomers] = useState([])
   const [loading, setLoading] = useState(true)
-  const [search, setSearch] = useState('')
+  const [totalCount, setTotalCount] = useState(0)
+  const [page, setPage] = useState(1)
+
+  const [searchInput, setSearchInput] = useState('')    // live input value
+  const [appliedSearch, setAppliedSearch] = useState('') // what's sent to DB
+
   const [activeTab, setActiveTab] = useState('all')
+  const [birthdayCustomers, setBirthdayCustomers] = useState([])
+
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editCustomer, setEditCustomer] = useState(null)
   const [deleteTarget, setDeleteTarget] = useState(null)
   const [deleting, setDeleting] = useState(false)
 
-  const fetchData = async () => {
+  // Main paginated fetch
+  useEffect(() => {
     if (!tenantId) return
     setLoading(true)
-    const { data } = await getCustomers(tenantId)
-    setCustomers(data)
-    setLoading(false)
-  }
+    getCustomers(tenantId, {
+      customerType: activeTab,
+      searchTerm: appliedSearch,
+      page,
+      pageSize: PAGE_SIZE,
+    }).then(({ data, count }) => {
+      setCustomers(data)
+      setTotalCount(count)
+      setLoading(false)
+    })
+  }, [tenantId, activeTab, appliedSearch, page])
 
-  useEffect(() => { fetchData() }, [tenantId])
-
-  const filtered = useMemo(() => {
-    let list = customers
-    if (activeTab !== 'all') list = list.filter(c => c.customer_type === activeTab)
-    if (search.trim()) {
-      const q = search.toLowerCase()
-      list = list.filter(c =>
-        c.full_name?.toLowerCase().includes(q) ||
-        c.company_name?.toLowerCase().includes(q) ||
-        c.phone?.includes(q)
-      )
-    }
-    return list
-  }, [customers, activeTab, search])
+  // Birthday widget — separate lightweight query, runs once
+  useEffect(() => {
+    if (!tenantId) return
+    getBirthdayCustomers(tenantId).then(({ data }) => setBirthdayCustomers(data ?? []))
+  }, [tenantId])
 
   const upcomingBirthdays = useMemo(() => {
     const today = new Date()
     today.setHours(0, 0, 0, 0)
     const in30 = new Date(today)
     in30.setDate(today.getDate() + 30)
-    return customers
-      .filter(c => c.customer_type === 'individual' && c.date_of_birth)
+    return birthdayCustomers
       .map(c => {
         const dob = new Date(c.date_of_birth)
         const yr = today.getFullYear()
@@ -95,10 +100,26 @@ export default function Customers() {
       })
       .filter(c => c.nextBirthday >= today && c.nextBirthday <= in30)
       .sort((a, b) => a.nextBirthday - b.nextBirthday)
-  }, [customers])
+  }, [birthdayCustomers])
 
   const displayName = (c) =>
     (c?.customer_type === 'company' ? c.company_name : c?.full_name) ?? '—'
+
+  const handleTabChange = (tab) => {
+    setActiveTab(tab)
+    setPage(1)
+  }
+
+  const handleSearch = () => {
+    setPage(1)
+    setAppliedSearch(searchInput.trim())
+  }
+
+  const handleSearchClear = () => {
+    setSearchInput('')
+    setAppliedSearch('')
+    setPage(1)
+  }
 
   const handleOpenAdd = () => {
     setEditCustomer(null)
@@ -121,7 +142,9 @@ export default function Customers() {
     } else {
       toast.success('Customer deleted')
       setDeleteTarget(null)
-      fetchData()
+      // Refetch current page
+      getCustomers(tenantId, { customerType: activeTab, searchTerm: appliedSearch, page, pageSize: PAGE_SIZE })
+        .then(({ data, count }) => { setCustomers(data); setTotalCount(count) })
     }
   }
 
@@ -158,7 +181,9 @@ export default function Customers() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold">Customers</h1>
-          <p className="text-sm text-muted-foreground">{customers.length} total</p>
+          <p className="text-sm text-muted-foreground">
+            {loading ? '…' : `${totalCount.toLocaleString('en-IN')} total`}
+          </p>
         </div>
         <Button onClick={handleOpenAdd} className="bg-indigo-500 hover:bg-indigo-600 text-white">
           <Plus className="w-4 h-4 mr-1.5" />
@@ -172,7 +197,7 @@ export default function Customers() {
           {TABS.map(({ value, label }) => (
             <button
               key={value}
-              onClick={() => setActiveTab(value)}
+              onClick={() => handleTabChange(value)}
               className={cn(
                 'px-3 py-1.5 rounded text-sm font-medium transition-colors',
                 activeTab === value
@@ -184,16 +209,39 @@ export default function Customers() {
             </button>
           ))}
         </div>
-        <div className="relative flex-1 max-w-xs">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-          <Input
-            value={search}
-            onChange={e => setSearch(e.target.value)}
-            placeholder="Search by name or phone..."
-            className="pl-9"
-          />
+
+        <div className="flex gap-2 flex-1 max-w-sm">
+          <div className="relative flex-1">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+            <Input
+              value={searchInput}
+              onChange={e => setSearchInput(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && handleSearch()}
+              placeholder="Search name or phone… (Enter)"
+              className="pl-9 pr-8"
+            />
+            {searchInput && (
+              <button
+                onClick={handleSearchClear}
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            )}
+          </div>
+          <Button variant="outline" size="sm" onClick={handleSearch} className="shrink-0">
+            Search
+          </Button>
         </div>
       </div>
+
+      {/* Applied search badge */}
+      {appliedSearch && (
+        <div className="flex items-center gap-2 text-xs text-muted-foreground">
+          Showing results for <span className="font-semibold text-foreground">"{appliedSearch}"</span>
+          <button onClick={handleSearchClear} className="text-indigo-500 hover:underline">Clear</button>
+        </div>
+      )}
 
       {/* Desktop Table */}
       <div className="hidden md:block rounded-xl border border-border overflow-hidden">
@@ -215,23 +263,23 @@ export default function Customers() {
           </thead>
           <tbody className="divide-y divide-border">
             {loading ? (
-              Array.from({ length: 4 }).map((_, i) => (
+              Array.from({ length: 8 }).map((_, i) => (
                 <tr key={i}>
                   {Array.from({ length: 8 }).map((_, j) => (
                     <td key={j} className="px-4 py-3"><Skeleton className="h-4 w-full" /></td>
                   ))}
                 </tr>
               ))
-            ) : filtered.length === 0 ? (
+            ) : customers.length === 0 ? (
               <tr>
                 <td colSpan={8} className="px-4 py-16 text-center text-muted-foreground text-sm">
-                  {customers.length === 0
-                    ? 'No customers yet — add your first one'
-                    : 'No customers match your search'}
+                  {appliedSearch
+                    ? `No customers match "${appliedSearch}"`
+                    : 'No customers yet — add your first one'}
                 </td>
               </tr>
             ) : (
-              filtered.map(customer => (
+              customers.map(customer => (
                 <tr
                   key={customer.id}
                   onClick={() => navigate(`/customers/${customer.id}`)}
@@ -272,21 +320,21 @@ export default function Customers() {
       {/* Mobile Cards */}
       <div className="md:hidden space-y-3">
         {loading ? (
-          Array.from({ length: 3 }).map((_, i) => (
+          Array.from({ length: 5 }).map((_, i) => (
             <div key={i} className="rounded-xl border border-border p-4 space-y-2">
               <Skeleton className="h-4 w-1/2" />
               <Skeleton className="h-3 w-1/3" />
               <Skeleton className="h-3 w-2/3" />
             </div>
           ))
-        ) : filtered.length === 0 ? (
+        ) : customers.length === 0 ? (
           <div className="text-center py-16 text-muted-foreground text-sm">
-            {customers.length === 0
-              ? 'No customers yet — add your first one'
-              : 'No customers match your search'}
+            {appliedSearch
+              ? `No customers match "${appliedSearch}"`
+              : 'No customers yet — add your first one'}
           </div>
         ) : (
-          filtered.map(customer => (
+          customers.map(customer => (
             <div
               key={customer.id}
               onClick={() => navigate(`/customers/${customer.id}`)}
@@ -331,12 +379,23 @@ export default function Customers() {
         )}
       </div>
 
+      {/* Pagination */}
+      <Pagination
+        page={page}
+        totalCount={totalCount}
+        pageSize={PAGE_SIZE}
+        onPageChange={setPage}
+      />
+
       {/* Add / Edit Dialog */}
       <CustomerDialog
         open={dialogOpen}
         onOpenChange={setDialogOpen}
         customer={editCustomer}
-        onSuccess={fetchData}
+        onSuccess={() => {
+          getCustomers(tenantId, { customerType: activeTab, searchTerm: appliedSearch, page, pageSize: PAGE_SIZE })
+            .then(({ data, count }) => { setCustomers(data); setTotalCount(count) })
+        }}
       />
 
       {/* Delete Confirmation */}

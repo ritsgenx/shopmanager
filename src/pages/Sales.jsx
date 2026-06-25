@@ -1,9 +1,8 @@
-﻿import React, { useState, useEffect, useMemo } from 'react'
+﻿import React, { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
-import { Plus, Search, Trash2, Download, Loader2 } from 'lucide-react'
+import { Plus, Search, Trash2, Download, Loader2, X } from 'lucide-react'
 import { toast } from 'sonner'
-import { Navigate } from 'react-router-dom'
 import { cn } from '@/lib/utils'
 import { useAuth } from '@/context/AuthContext'
 import { getSales, getSaleById, deleteSale } from '@/lib/sales'
@@ -15,6 +14,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from '@/components/ui/dialog'
+import Pagination, { PAGE_SIZE } from '@/components/shared/Pagination'
 
 const fmt = (n) => `₹${Number(n || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 
@@ -73,7 +73,10 @@ export default function Sales() {
   const [sales, setSales] = useState([])
   const [users, setUsers] = useState([])
   const [loading, setLoading] = useState(true)
-  const [search, setSearch] = useState('')
+  const [totalCount, setTotalCount] = useState(0)
+  const [page, setPage] = useState(1)
+  const [searchInput, setSearchInput] = useState('')
+  const [appliedSearch, setAppliedSearch] = useState('')
   const [dateTab, setDateTab] = useState('all')
 
   const [detailId, setDetailId] = useState(null)
@@ -83,34 +86,43 @@ export default function Sales() {
   const [deleteTarget, setDeleteTarget] = useState(null)
   const [deleting, setDeleting] = useState(false)
 
-  const fetchSales = async () => {
+  const fetchSales = async (pg = page) => {
     if (!tenantId) return
     setLoading(true)
     const filters = {
       ...(isEmployee ? { employeeId: currentUser.id } : {}),
       ...getDateRange(dateTab),
+      searchTerm: appliedSearch,
+      page: pg,
+      pageSize: PAGE_SIZE,
     }
-    const { data } = await getSales(tenantId, filters)
+    const { data, count } = await getSales(tenantId, filters)
     setSales(data)
+    setTotalCount(count)
     setLoading(false)
   }
 
-  useEffect(() => { fetchSales() }, [tenantId, dateTab])
+  useEffect(() => { fetchSales() }, [tenantId, dateTab, appliedSearch, page])
 
   useEffect(() => {
     if (tenantId) getTenantUsers(tenantId).then(({ data }) => setUsers(data))
   }, [tenantId])
 
-  const filtered = useMemo(() => {
-    if (!search.trim()) return sales
-    const q = search.toLowerCase()
-    return sales.filter((s) =>
-      s.invoice_number?.toLowerCase().includes(q) ||
-      s.customers?.full_name?.toLowerCase().includes(q) ||
-      s.customers?.company_name?.toLowerCase().includes(q) ||
-      s.customers?.phone?.includes(q)
-    )
-  }, [sales, search])
+  const handleDateTabChange = (tab) => {
+    setDateTab(tab)
+    setPage(1)
+  }
+
+  const handleSearch = () => {
+    setPage(1)
+    setAppliedSearch(searchInput.trim())
+  }
+
+  const handleSearchClear = () => {
+    setSearchInput('')
+    setAppliedSearch('')
+    setPage(1)
+  }
 
   const openDetail = async (id) => {
     setDetailId(id)
@@ -167,7 +179,9 @@ export default function Sales() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold">Sales</h1>
-          <p className="text-sm text-muted-foreground">{sales.length} record{sales.length !== 1 ? 's' : ''}</p>
+          <p className="text-sm text-muted-foreground">
+            {loading ? '…' : `${totalCount.toLocaleString('en-IN')} record${totalCount !== 1 ? 's' : ''}`}
+          </p>
         </div>
         <Button
           onClick={() => navigate('/sales/new')}
@@ -184,7 +198,7 @@ export default function Sales() {
           {DATE_TABS.map(({ value, label }) => (
             <button
               key={value}
-              onClick={() => setDateTab(value)}
+              onClick={() => handleDateTabChange(value)}
               className={cn(
                 'px-3 py-1.5 rounded text-sm font-medium transition-colors',
                 dateTab === value ? 'bg-indigo-500 text-white' : 'text-muted-foreground hover:text-foreground'
@@ -194,14 +208,23 @@ export default function Sales() {
             </button>
           ))}
         </div>
-        <div className="relative flex-1 max-w-xs">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-          <Input
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search invoice, customer or phone..."
-            className="pl-9"
-          />
+        <div className="flex gap-2 flex-1 max-w-sm">
+          <div className="relative flex-1">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+            <Input
+              value={searchInput}
+              onChange={e => setSearchInput(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && handleSearch()}
+              placeholder="Search invoice number… (Enter)"
+              className="pl-9 pr-8"
+            />
+            {searchInput && (
+              <button onClick={handleSearchClear} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
+                <X className="w-3.5 h-3.5" />
+              </button>
+            )}
+          </div>
+          <Button variant="outline" size="sm" onClick={handleSearch} className="shrink-0">Search</Button>
         </div>
       </div>
 
@@ -227,13 +250,13 @@ export default function Sales() {
                   ))}
                 </tr>
               ))
-            ) : filtered.length === 0 ? (
+            ) : sales.length === 0 ? (
               <tr>
                 <td colSpan={8} className="px-4 py-16 text-center text-muted-foreground text-sm">
-                  {sales.length === 0 ? 'No sales yet — create your first one' : 'No results match your search'}
+                  {appliedSearch ? `No invoices match "${appliedSearch}"` : 'No sales yet — create your first one'}
                 </td>
               </tr>
-            ) : filtered.map((sale) => (
+            ) : sales.map((sale) => (
               <tr
                 key={sale.id}
                 onClick={() => openDetail(sale.id)}
@@ -271,11 +294,11 @@ export default function Sales() {
               <Skeleton className="h-3 w-2/3" />
             </div>
           ))
-        ) : filtered.length === 0 ? (
+        ) : sales.length === 0 ? (
           <p className="text-center py-12 text-muted-foreground text-sm">
-            {sales.length === 0 ? 'No sales yet — create your first one' : 'No results match your search'}
+            {appliedSearch ? `No invoices match "${appliedSearch}"` : 'No sales yet — create your first one'}
           </p>
-        ) : filtered.map((sale) => (
+        ) : sales.map((sale) => (
           <div
             key={sale.id}
             onClick={() => openDetail(sale.id)}
@@ -295,6 +318,9 @@ export default function Sales() {
           </div>
         ))}
       </div>
+
+      {/* Pagination */}
+      <Pagination page={page} totalCount={totalCount} pageSize={PAGE_SIZE} onPageChange={setPage} />
 
       {/* ── Detail Dialog ─────────────────────────────────────────────────── */}
       <Dialog open={Boolean(detailId)} onOpenChange={() => { setDetailId(null); setDetailData(null) }}>

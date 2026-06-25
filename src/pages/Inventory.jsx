@@ -1,6 +1,6 @@
-﻿import React, { useState, useEffect, useMemo } from 'react'
+﻿import React, { useState, useEffect } from 'react'
 import { motion } from 'framer-motion'
-import { Plus, Search, Pencil, Trash2, Package, AlertCircle, Loader2 } from 'lucide-react'
+import { Plus, Search, Pencil, Trash2, Package, AlertCircle, Loader2, X } from 'lucide-react'
 import { toast } from 'sonner'
 import { useAuth } from '@/context/AuthContext'
 import { getInventory, deleteInventory } from '@/lib/inventory'
@@ -15,6 +15,7 @@ import {
 } from '@/components/ui/dialog'
 import AddStockDialog from '@/components/inventory/AddStockDialog'
 import EditStockDialog from '@/components/inventory/EditStockDialog'
+import Pagination, { PAGE_SIZE } from '@/components/shared/Pagination'
 
 function StatusBadge({ qty }) {
   if (qty === 0)
@@ -45,36 +46,44 @@ export default function Inventory() {
   const [inventory, setInventory] = useState([])
   const [products, setProducts] = useState([])
   const [loading, setLoading] = useState(true)
-  const [search, setSearch] = useState('')
+  const [totalCount, setTotalCount] = useState(0)
+  const [page, setPage] = useState(1)
+  const [searchInput, setSearchInput] = useState('')
+  const [appliedSearch, setAppliedSearch] = useState('')
   const [addOpen, setAddOpen] = useState(false)
   const [editItem, setEditItem] = useState(null)
   const [deleteItem, setDeleteItem] = useState(null)
   const [deleting, setDeleting] = useState(false)
 
-  const fetchData = async () => {
+  const fetchInventory = async () => {
     if (!tenantId) return
     setLoading(true)
-    const [invRes, prodRes] = await Promise.all([
-      getInventory(tenantId),
-      getProducts(tenantId),
-    ])
-    if (invRes.error) toast.error('Failed to load inventory')
-    else setInventory(invRes.data)
-    if (!prodRes.error) setProducts(prodRes.data)
+    const { data, count, error } = await getInventory(tenantId, {
+      searchTerm: appliedSearch,
+      page,
+      pageSize: PAGE_SIZE,
+    })
+    if (error) toast.error('Failed to load inventory')
+    else { setInventory(data); setTotalCount(count) }
     setLoading(false)
   }
 
-  useEffect(() => { fetchData() }, [tenantId])
+  useEffect(() => { fetchInventory() }, [tenantId, appliedSearch, page])
 
-  const filtered = useMemo(() => {
-    if (!search.trim()) return inventory
-    const q = search.toLowerCase()
-    return inventory.filter(
-      (item) =>
-        item.products?.brand?.toLowerCase().includes(q) ||
-        item.products?.model?.toLowerCase().includes(q)
-    )
-  }, [inventory, search])
+  useEffect(() => {
+    if (tenantId) getProducts(tenantId).then(({ data }) => setProducts(data ?? []))
+  }, [tenantId])
+
+  const handleSearch = () => {
+    setPage(1)
+    setAppliedSearch(searchInput.trim())
+  }
+
+  const handleSearchClear = () => {
+    setSearchInput('')
+    setAppliedSearch('')
+    setPage(1)
+  }
 
   const handleDelete = async () => {
     if (!deleteItem) return
@@ -85,8 +94,8 @@ export default function Inventory() {
       toast.error('Failed to delete item')
     } else {
       toast.success('Item deleted')
-      setInventory((prev) => prev.filter((i) => i.id !== deleteItem.id))
       setDeleteItem(null)
+      fetchInventory()
     }
   }
 
@@ -102,7 +111,7 @@ export default function Inventory() {
         <div>
           <h1 className="text-2xl font-bold">Inventory</h1>
           <p className="text-sm text-muted-foreground mt-0.5">
-            {loading ? '…' : `${inventory.length} item${inventory.length !== 1 ? 's' : ''}`}
+            {loading ? '…' : `${totalCount.toLocaleString('en-IN')} item${totalCount !== 1 ? 's' : ''}`}
           </p>
         </div>
         <Button
@@ -115,14 +124,23 @@ export default function Inventory() {
       </div>
 
       {/* Search */}
-      <div className="relative max-w-sm">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-        <Input
-          placeholder="Search brand or model…"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          className="pl-9"
-        />
+      <div className="flex gap-2 max-w-sm">
+        <div className="relative flex-1">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+          <Input
+            placeholder="Search brand or model… (Enter)"
+            value={searchInput}
+            onChange={e => setSearchInput(e.target.value)}
+            onKeyDown={e => e.key === 'Enter' && handleSearch()}
+            className="pl-9 pr-8"
+          />
+          {searchInput && (
+            <button onClick={handleSearchClear} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
+              <X className="w-3.5 h-3.5" />
+            </button>
+          )}
+        </div>
+        <Button variant="outline" size="sm" onClick={handleSearch} className="shrink-0">Search</Button>
       </div>
 
       {/* Desktop Table */}
@@ -152,20 +170,20 @@ export default function Inventory() {
                   ))}
                 </tr>
               ))
-            ) : filtered.length === 0 ? (
+            ) : inventory.length === 0 ? (
               <tr>
                 <td colSpan={9} className="px-4 py-20 text-center text-muted-foreground">
                   <Package className="w-10 h-10 mx-auto mb-2 opacity-25" />
                   <p className="font-medium">
-                    {search ? 'No results found' : 'No inventory yet'}
+                    {appliedSearch ? `No results for "${appliedSearch}"` : 'No inventory yet'}
                   </p>
-                  {!search && (
+                  {!appliedSearch && (
                     <p className="text-sm mt-1">Click "Add Stock" to get started</p>
                   )}
                 </td>
               </tr>
             ) : (
-              filtered.map((item) => (
+              inventory.map((item) => (
                 <tr key={item.id} className="hover:bg-muted/20 transition-colors">
                   <td className="px-4 py-3 font-medium">{item.products?.brand ?? '—'}</td>
                   <td className="px-4 py-3">{item.products?.model ?? '—'}</td>
@@ -220,14 +238,14 @@ export default function Inventory() {
               </CardContent>
             </Card>
           ))
-        ) : filtered.length === 0 ? (
+        ) : inventory.length === 0 ? (
           <div className="flex flex-col items-center gap-2 py-16 text-muted-foreground">
             <Package className="w-10 h-10 opacity-25" />
-            <p className="font-medium">{search ? 'No results found' : 'No inventory yet'}</p>
-            {!search && <p className="text-sm">Click "Add Stock" to get started</p>}
+            <p className="font-medium">{appliedSearch ? `No results for "${appliedSearch}"` : 'No inventory yet'}</p>
+            {!appliedSearch && <p className="text-sm">Click "Add Stock" to get started</p>}
           </div>
         ) : (
-          filtered.map((item) => (
+          inventory.map((item) => (
             <Card key={item.id} className="border-border">
               <CardContent className="p-4">
                 <div className="flex items-start justify-between gap-2 mb-3">
@@ -283,13 +301,16 @@ export default function Inventory() {
         )}
       </div>
 
+      {/* Pagination */}
+      <Pagination page={page} totalCount={totalCount} pageSize={PAGE_SIZE} onPageChange={setPage} />
+
       {/* Add Stock Dialog */}
       <AddStockDialog
         open={addOpen}
         onOpenChange={setAddOpen}
         tenantId={tenantId}
         products={products}
-        onSuccess={fetchData}
+        onSuccess={fetchInventory}
       />
 
       {/* Edit Stock Dialog */}
@@ -297,7 +318,7 @@ export default function Inventory() {
         open={!!editItem}
         onOpenChange={(open) => { if (!open) setEditItem(null) }}
         item={editItem}
-        onSuccess={fetchData}
+        onSuccess={fetchInventory}
       />
 
       {/* Delete Confirmation */}

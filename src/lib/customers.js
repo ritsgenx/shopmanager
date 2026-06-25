@@ -1,24 +1,41 @@
 import { supabase } from './supabase'
 
-export async function getCustomers(tenantId, { customerType, searchTerm } = {}) {
+export async function getCustomers(tenantId, { customerType, searchTerm, page = 1, pageSize = 50 } = {}) {
+  const from = (page - 1) * pageSize
+  const to   = from + pageSize - 1
+
   let query = supabase
     .from('customers')
-    .select('*')
+    .select('*', { count: 'exact' })
     .eq('tenant_id', tenantId)
     .eq('is_active', true)
     .order('last_visit_date', { ascending: false, nullsFirst: false })
+    .range(from, to)
 
   if (customerType && customerType !== 'all') {
     query = query.eq('customer_type', customerType)
   }
 
-  if (searchTerm) {
+  if (searchTerm?.trim()) {
     query = query.or(
       `full_name.ilike.%${searchTerm}%,company_name.ilike.%${searchTerm}%,phone.ilike.%${searchTerm}%`
     )
   }
 
-  const { data, error } = await query
+  const { data, error, count } = await query
+  return { data: data ?? [], error, count: count ?? 0 }
+}
+
+// Lightweight query for the birthday widget — only fetches customers with a DOB set
+export async function getBirthdayCustomers(tenantId) {
+  const { data, error } = await supabase
+    .from('customers')
+    .select('id, full_name, date_of_birth')
+    .eq('tenant_id', tenantId)
+    .eq('is_active', true)
+    .eq('customer_type', 'individual')
+    .not('date_of_birth', 'is', null)
+    .limit(500)
   return { data: data ?? [], error }
 }
 
