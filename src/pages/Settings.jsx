@@ -182,7 +182,7 @@ export default function Settings() {
         </CardHeader>
         <CardContent className="space-y-3">
           <Label>Color Theme</Label>
-          <div className="flex rounded-lg border border-border bg-muted/30 p-1 w-fit gap-1">
+          <div className="flex flex-wrap rounded-lg border border-border bg-muted/30 p-1 w-fit gap-1">
             {[
               { value: 'light', label: 'Light', icon: Sun },
               { value: 'dim',   label: 'Dim',   icon: SunMedium },
@@ -270,7 +270,7 @@ export default function Settings() {
             <Separator />
 
             {/* Shop name + GST */}
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="space-y-1.5">
                 <Label>Shop Name <span className="text-red-400">*</span></Label>
                 <Input
@@ -296,7 +296,7 @@ export default function Settings() {
             </div>
 
             {/* Owner */}
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="space-y-1.5">
                 <Label>Owner Name</Label>
                 <Input {...register('owner_name')} placeholder="Ritesh Mittal" />
@@ -321,8 +321,8 @@ export default function Settings() {
               <Input {...register('address')} placeholder="Shop No. 12, Main Market" />
             </div>
 
-            <div className="grid grid-cols-4 gap-3">
-              <div className="col-span-2 space-y-1.5">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              <div className="col-span-2 sm:col-span-2 space-y-1.5">
                 <Label>City</Label>
                 <Input {...register('city')} placeholder="Indore" />
               </div>
@@ -425,7 +425,7 @@ export default function Settings() {
             </div>
 
             {/* Lat / Lng / Radius */}
-            <div className="grid grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
               <div className="space-y-1.5">
                 <Label>Latitude</Label>
                 <Input

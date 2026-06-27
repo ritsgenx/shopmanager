@@ -63,6 +63,7 @@ export async function createPurchase(headerData, lineItems, tenantId) {
       purchase_price: item.unit_price,
       selling_price: item.unit_price, // default — user can update in Inventory module
       quantity: item.quantity,
+      imei_number: item.imei_number || null,
       stock_source: headerData.purchase_type === 'official' ? 'official' : 'unofficial',
     })
 

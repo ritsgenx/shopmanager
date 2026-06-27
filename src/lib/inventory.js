@@ -48,6 +48,22 @@ export async function getBrandSummary(tenantId) {
   return { data: result, error: null }
 }
 
+export async function getInventoryForModel(tenantId, brand, model) {
+  const { data: prods } = await supabase
+    .from('products').select('id')
+    .eq('tenant_id', tenantId).eq('brand', brand).eq('model', model)
+  const productIds = prods?.map(p => p.id) ?? []
+  if (productIds.length === 0) return { data: [], error: null }
+
+  const { data, error } = await supabase
+    .from('inventory')
+    .select(`*, products ( brand, model, variant, color, category, hsn_code, gst_rate )`)
+    .eq('tenant_id', tenantId)
+    .in('product_id', productIds)
+    .order('created_at', { ascending: false })
+  return { data: data ?? [], error }
+}
+
 export async function getInventoryForBrand(tenantId, brand) {
   const { data: prods } = await supabase
     .from('products').select('id')

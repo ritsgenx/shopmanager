@@ -55,7 +55,7 @@ export default function NewPurchase() {
   const handleAddLineItem = useCallback((item) => {
     setLineItems((prev) => [
       ...prev,
-      { _id: nextId(), ...item, quantity: 1, unit_price: '' },
+      { _id: nextId(), ...item, quantity: 1, unit_price: '', imei_number: '' },
     ])
   }, [])
 
@@ -101,6 +101,15 @@ export default function NewPurchase() {
       return
     }
 
+    // IMEI required for smartphones
+    const imeiMissing = lineItems.some(
+      (item) => item.category === 'smartphone' && !/^\d{15}$/.test(item.imei_number ?? '')
+    )
+    if (imeiMissing) {
+      toast.error('IMEI (15 digits) is required for all smartphone items')
+      return
+    }
+
     // Conditional field validation
     if (isOfficial) {
       if (!values.supplier_gstin.trim()) { toast.error('Supplier GSTIN is required'); return }
@@ -112,15 +121,17 @@ export default function NewPurchase() {
     setSubmitting(true)
 
     const processedItems = lineItems.map((item) => {
-      const lineSubtotal = Number(item.unit_price) * Number(item.quantity)
+      const qty = item.category === 'smartphone' ? 1 : Number(item.quantity)
+      const lineSubtotal = Number(item.unit_price) * qty
       const lineGst = isOfficial ? (lineSubtotal * Number(item.gst_rate)) / 100 : 0
       return {
         product_id: item.product_id,
-        quantity: Number(item.quantity),
+        quantity: qty,
         unit_price: Number(item.unit_price),
         gst_rate: Number(item.gst_rate),
         gst_amount: lineGst,
         total_amount: lineSubtotal,
+        imei_number: item.imei_number || null,
       }
     })
 
@@ -322,24 +333,45 @@ export default function NewPurchase() {
                   </thead>
                   <tbody className="divide-y divide-border">
                     {lineItems.map((item) => {
-                      const lineSubtotal = Number(item.unit_price || 0) * Number(item.quantity || 0)
+                      const isPhone = item.category === 'smartphone'
+                      const qty = isPhone ? 1 : Number(item.quantity || 0)
+                      const lineSubtotal = Number(item.unit_price || 0) * qty
                       const lineGst = isOfficial ? (lineSubtotal * Number(item.gst_rate || 0)) / 100 : 0
+                      const imeiInvalid = isPhone && item.imei_number && !/^\d{15}$/.test(item.imei_number)
                       return (
                         <tr key={item._id}>
-                          <td className="py-2 pr-3 font-medium max-w-[160px]">
+                          <td className="py-2 pr-3 font-medium max-w-[200px]">
                             <p className="truncate">{item.product_name}</p>
                             {isOfficial && (
                               <p className="text-xs text-muted-foreground">GST: {item.gst_rate}%</p>
                             )}
+                            {isPhone && (
+                              <div className="mt-1">
+                                <Input
+                                  type="text"
+                                  maxLength={15}
+                                  inputMode="numeric"
+                                  placeholder="IMEI — 15 digits *"
+                                  value={item.imei_number || ''}
+                                  onChange={(e) => updateItem(item._id, 'imei_number', e.target.value)}
+                                  className={`w-40 h-7 text-xs font-mono ${imeiInvalid ? 'border-red-500' : ''}`}
+                                />
+                                {imeiInvalid && <p className="text-red-400 text-xs mt-0.5">Must be 15 digits</p>}
+                              </div>
+                            )}
                           </td>
                           <td className="py-2 text-right">
-                            <Input
-                              type="number"
-                              min={1}
-                              value={item.quantity}
-                              onChange={(e) => updateItem(item._id, 'quantity', e.target.value)}
-                              className="w-16 text-right ml-auto h-8 text-sm"
-                            />
+                            {isPhone ? (
+                              <span className="text-sm font-medium px-2 text-muted-foreground">1</span>
+                            ) : (
+                              <Input
+                                type="number"
+                                min={1}
+                                value={item.quantity}
+                                onChange={(e) => updateItem(item._id, 'quantity', e.target.value)}
+                                className="w-16 text-right ml-auto h-8 text-sm"
+                              />
+                            )}
                           </td>
                           <td className="py-2 text-right">
                             <Input

@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect } from 'react'
 import { useForm, Controller } from 'react-hook-form'
 import { Loader2 } from 'lucide-react'
 import { toast } from 'sonner'
@@ -15,10 +15,10 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select'
 
-// Shared purchase + stock fields used by both modes
 function PurchaseFields({ register, errors, control }) {
   return (
     <>
+      {/* Stock Source */}
       <div className="space-y-1.5">
         <Label className="text-slate-300">Stock Source</Label>
         <Controller
@@ -31,21 +31,16 @@ function PurchaseFields({ register, errors, control }) {
                 <SelectValue />
               </SelectTrigger>
               <SelectContent className="bg-slate-800 border-slate-600">
-                <SelectItem value="official" className="text-white focus:bg-slate-700 focus:text-white">
-                  Official Purchase Order
-                </SelectItem>
-                <SelectItem value="unofficial" className="text-white focus:bg-slate-700 focus:text-white">
-                  Unofficial Purchase Order
-                </SelectItem>
-                <SelectItem value="manual" className="text-white focus:bg-slate-700 focus:text-white">
-                  Direct / Manual Entry
-                </SelectItem>
+                <SelectItem value="official" className="text-white focus:bg-slate-700 focus:text-white">Official Purchase Order</SelectItem>
+                <SelectItem value="unofficial" className="text-white focus:bg-slate-700 focus:text-white">Unofficial Purchase Order</SelectItem>
+                <SelectItem value="manual" className="text-white focus:bg-slate-700 focus:text-white">Direct / Manual Entry</SelectItem>
               </SelectContent>
             </Select>
           )}
         />
       </div>
 
+      {/* Prices */}
       <div className="grid grid-cols-2 gap-3">
         <div className="space-y-1.5">
           <Label className="text-slate-300">Purchase Price (₹)</Label>
@@ -54,14 +49,10 @@ function PurchaseFields({ register, errors, control }) {
               required: 'Required',
               min: { value: 0.01, message: 'Must be > 0' },
             })}
-            type="number"
-            step="0.01"
-            placeholder="0.00"
+            type="number" step="0.01" placeholder="0.00"
             className="bg-slate-700 border-slate-600 text-white placeholder:text-slate-500"
           />
-          {errors.purchase_price && (
-            <p className="text-red-400 text-xs">{errors.purchase_price.message}</p>
-          )}
+          {errors.purchase_price && <p className="text-red-400 text-xs">{errors.purchase_price.message}</p>}
         </div>
         <div className="space-y-1.5">
           <Label className="text-slate-300">Selling Price (₹)</Label>
@@ -70,43 +61,30 @@ function PurchaseFields({ register, errors, control }) {
               required: 'Required',
               min: { value: 0.01, message: 'Must be > 0' },
             })}
-            type="number"
-            step="0.01"
-            placeholder="0.00"
+            type="number" step="0.01" placeholder="0.00"
             className="bg-slate-700 border-slate-600 text-white placeholder:text-slate-500"
           />
-          {errors.selling_price && (
-            <p className="text-red-400 text-xs">{errors.selling_price.message}</p>
-          )}
+          {errors.selling_price && <p className="text-red-400 text-xs">{errors.selling_price.message}</p>}
         </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-3">
-        <div className="space-y-1.5">
-          <Label className="text-slate-300">Quantity</Label>
-          <Input
-            {...register('quantity', {
-              required: 'Required',
-              min: { value: 1, message: 'Must be ≥ 1' },
-            })}
-            type="number"
-            placeholder="1"
-            className="bg-slate-700 border-slate-600 text-white placeholder:text-slate-500"
-          />
-          {errors.quantity && (
-            <p className="text-red-400 text-xs">{errors.quantity.message}</p>
-          )}
-        </div>
-        <div className="space-y-1.5">
-          <Label className="text-slate-300">
-            IMEI <span className="text-slate-500 text-xs">(optional)</span>
-          </Label>
-          <Input
-            {...register('imei_number')}
-            placeholder="123456789012345"
-            className="bg-slate-700 border-slate-600 text-white placeholder:text-slate-500"
-          />
-        </div>
+      {/* IMEI — always required */}
+      <div className="space-y-1.5">
+        <Label className="text-slate-300">
+          IMEI <span className="text-red-400">*</span>
+        </Label>
+        <Input
+          {...register('imei_number', {
+            required: 'IMEI is required',
+            pattern: { value: /^\d{15}$/, message: 'IMEI must be exactly 15 digits' },
+          })}
+          placeholder="123456789012345"
+          maxLength={15}
+          inputMode="numeric"
+          className="bg-slate-700 border-slate-600 text-white placeholder:text-slate-500 font-mono"
+        />
+        {errors.imei_number && <p className="text-red-400 text-xs">{errors.imei_number.message}</p>}
+        <p className="text-xs text-slate-500">One unit per entry — each device requires its own IMEI</p>
       </div>
     </>
   )
@@ -122,11 +100,10 @@ export default function AddStockDialog({ open, onOpenChange, tenantId, products,
     defaultValues: {
       category: '', brand: '', model: '', variant: '', color: '',
       hsn_code: '', gst_rate: '18',
-      purchase_price: '', selling_price: '', quantity: '', imei_number: '', stock_source: 'manual',
+      purchase_price: '', selling_price: '', imei_number: '', stock_source: 'manual',
     },
   })
 
-  // Reset both forms when dialog closes
   useEffect(() => {
     if (!open) {
       formA.reset()
@@ -147,7 +124,7 @@ export default function AddStockDialog({ open, onOpenChange, tenantId, products,
       product_id: values.product_id,
       purchase_price: Number(values.purchase_price),
       selling_price: Number(values.selling_price),
-      quantity: Number(values.quantity),
+      quantity: 1,
       imei_number: values.imei_number || null,
       stock_source: values.stock_source || 'manual',
     })
@@ -184,7 +161,7 @@ export default function AddStockDialog({ open, onOpenChange, tenantId, products,
       product_id: product.id,
       purchase_price: Number(values.purchase_price),
       selling_price: Number(values.selling_price),
-      quantity: Number(values.quantity),
+      quantity: 1,
       imei_number: values.imei_number || null,
       stock_source: values.stock_source || 'manual',
     })
@@ -209,7 +186,6 @@ export default function AddStockDialog({ open, onOpenChange, tenantId, products,
           <DialogTitle className="text-white text-lg">Add Stock</DialogTitle>
         </DialogHeader>
 
-        {/* Mode switcher */}
         <div className="flex rounded-lg border border-slate-600 bg-slate-900 p-1">
           {['existing', 'new'].map((m) => (
             <button
@@ -218,9 +194,7 @@ export default function AddStockDialog({ open, onOpenChange, tenantId, products,
               onClick={() => switchMode(m)}
               className={cn(
                 'flex-1 py-1.5 text-sm rounded transition-colors',
-                mode === m
-                  ? 'bg-indigo-500 text-white'
-                  : 'text-slate-400 hover:text-white'
+                mode === m ? 'bg-indigo-500 text-white' : 'text-slate-400 hover:text-white'
               )}
             >
               {m === 'existing' ? 'Existing Product' : 'New Product'}
@@ -249,14 +223,8 @@ export default function AddStockDialog({ open, onOpenChange, tenantId, products,
                         </div>
                       ) : (
                         products.map((p) => (
-                          <SelectItem
-                            key={p.id}
-                            value={p.id}
-                            className="text-white focus:bg-slate-700 focus:text-white"
-                          >
-                            {p.brand} {p.model}
-                            {p.variant ? ` (${p.variant})` : ''}
-                            {p.color ? ` — ${p.color}` : ''}
+                          <SelectItem key={p.id} value={p.id} className="text-white focus:bg-slate-700 focus:text-white">
+                            {p.brand} {p.model}{p.variant ? ` (${p.variant})` : ''}{p.color ? ` — ${p.color}` : ''}
                           </SelectItem>
                         ))
                       )}
@@ -264,27 +232,18 @@ export default function AddStockDialog({ open, onOpenChange, tenantId, products,
                   </Select>
                 )}
               />
-              {errA.product_id && (
-                <p className="text-red-400 text-xs">{errA.product_id.message}</p>
-              )}
+              {errA.product_id && <p className="text-red-400 text-xs">{errA.product_id.message}</p>}
             </div>
 
-            <PurchaseFields register={formA.register} errors={errA} control={formA.control} />
+            <PurchaseFields
+              register={formA.register}
+              errors={errA}
+              control={formA.control}
+                          />
 
             <DialogFooter className="pt-2">
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => onOpenChange(false)}
-                className="border-slate-600 text-slate-300 hover:bg-slate-700"
-              >
-                Cancel
-              </Button>
-              <Button
-                type="submit"
-                disabled={submittingA}
-                className="bg-indigo-500 hover:bg-indigo-600 text-white"
-              >
+              <Button type="button" variant="outline" onClick={() => onOpenChange(false)} className="border-slate-600 text-slate-300 hover:bg-slate-700">Cancel</Button>
+              <Button type="submit" disabled={submittingA} className="bg-indigo-500 hover:bg-indigo-600 text-white">
                 {submittingA && <Loader2 className="w-4 h-4 animate-spin mr-2" />}
                 Add Stock
               </Button>
@@ -295,7 +254,6 @@ export default function AddStockDialog({ open, onOpenChange, tenantId, products,
         {/* ── Mode B: New Product ── */}
         {mode === 'new' && (
           <form onSubmit={formB.handleSubmit(onSubmitB)} className="space-y-4 mt-2">
-            {/* Category */}
             <div className="space-y-1.5">
               <Label className="text-slate-300">Category</Label>
               <Controller
@@ -308,12 +266,8 @@ export default function AddStockDialog({ open, onOpenChange, tenantId, products,
                       <SelectValue placeholder="Select category…" />
                     </SelectTrigger>
                     <SelectContent className="bg-slate-800 border-slate-600">
-                      <SelectItem value="smartphone" className="text-white focus:bg-slate-700 focus:text-white">
-                        Smartphone
-                      </SelectItem>
-                      <SelectItem value="accessory" className="text-white focus:bg-slate-700 focus:text-white">
-                        Accessory
-                      </SelectItem>
+                      <SelectItem value="smartphone" className="text-white focus:bg-slate-700 focus:text-white">Smartphone</SelectItem>
+                      <SelectItem value="accessory" className="text-white focus:bg-slate-700 focus:text-white">Accessory</SelectItem>
                     </SelectContent>
                   </Select>
                 )}
@@ -321,73 +275,40 @@ export default function AddStockDialog({ open, onOpenChange, tenantId, products,
               {errB.category && <p className="text-red-400 text-xs">{errB.category.message}</p>}
             </div>
 
-            {/* Brand + Model */}
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
                 <Label className="text-slate-300">Brand</Label>
-                <Input
-                  {...formB.register('brand', { required: 'Required' })}
-                  placeholder="Samsung"
-                  className="bg-slate-700 border-slate-600 text-white placeholder:text-slate-500"
-                />
+                <Input {...formB.register('brand', { required: 'Required' })} placeholder="Samsung" className="bg-slate-700 border-slate-600 text-white placeholder:text-slate-500" />
                 {errB.brand && <p className="text-red-400 text-xs">{errB.brand.message}</p>}
               </div>
               <div className="space-y-1.5">
                 <Label className="text-slate-300">Model</Label>
-                <Input
-                  {...formB.register('model', { required: 'Required' })}
-                  placeholder="Galaxy S24"
-                  className="bg-slate-700 border-slate-600 text-white placeholder:text-slate-500"
-                />
+                <Input {...formB.register('model', { required: 'Required' })} placeholder="Galaxy S24" className="bg-slate-700 border-slate-600 text-white placeholder:text-slate-500" />
                 {errB.model && <p className="text-red-400 text-xs">{errB.model.message}</p>}
               </div>
             </div>
 
-            {/* Variant + Color */}
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
-                <Label className="text-slate-300">
-                  Variant <span className="text-slate-500 text-xs">(optional)</span>
-                </Label>
-                <Input
-                  {...formB.register('variant')}
-                  placeholder="256GB"
-                  className="bg-slate-700 border-slate-600 text-white placeholder:text-slate-500"
-                />
+                <Label className="text-slate-300">Variant <span className="text-slate-500 text-xs">(optional)</span></Label>
+                <Input {...formB.register('variant')} placeholder="256GB" className="bg-slate-700 border-slate-600 text-white placeholder:text-slate-500" />
               </div>
               <div className="space-y-1.5">
-                <Label className="text-slate-300">
-                  Color <span className="text-slate-500 text-xs">(optional)</span>
-                </Label>
-                <Input
-                  {...formB.register('color')}
-                  placeholder="Midnight Black"
-                  className="bg-slate-700 border-slate-600 text-white placeholder:text-slate-500"
-                />
+                <Label className="text-slate-300">Color <span className="text-slate-500 text-xs">(optional)</span></Label>
+                <Input {...formB.register('color')} placeholder="Midnight Black" className="bg-slate-700 border-slate-600 text-white placeholder:text-slate-500" />
               </div>
             </div>
 
-            {/* HSN + GST */}
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
-                <Label className="text-slate-300">
-                  HSN Code <span className="text-slate-500 text-xs">(optional)</span>
-                </Label>
-                <Input
-                  {...formB.register('hsn_code')}
-                  placeholder="8517"
-                  className="bg-slate-700 border-slate-600 text-white placeholder:text-slate-500"
-                />
+                <Label className="text-slate-300">HSN Code <span className="text-slate-500 text-xs">(optional)</span></Label>
+                <Input {...formB.register('hsn_code')} placeholder="8517" className="bg-slate-700 border-slate-600 text-white placeholder:text-slate-500" />
               </div>
               <div className="space-y-1.5">
                 <Label className="text-slate-300">GST Rate (%)</Label>
                 <Input
-                  {...formB.register('gst_rate', {
-                    required: 'Required',
-                    min: { value: 0, message: 'Must be ≥ 0' },
-                  })}
-                  type="number"
-                  placeholder="18"
+                  {...formB.register('gst_rate', { required: 'Required', min: { value: 0, message: 'Must be ≥ 0' } })}
+                  type="number" placeholder="18"
                   className="bg-slate-700 border-slate-600 text-white placeholder:text-slate-500"
                 />
                 {errB.gst_rate && <p className="text-red-400 text-xs">{errB.gst_rate.message}</p>}
@@ -396,23 +317,16 @@ export default function AddStockDialog({ open, onOpenChange, tenantId, products,
 
             <div className="border-t border-slate-600 pt-4">
               <p className="text-xs text-slate-400 mb-3 uppercase tracking-wider">Purchase Details</p>
-              <PurchaseFields register={formB.register} errors={errB} control={formB.control} />
+              <PurchaseFields
+                register={formB.register}
+                errors={errB}
+                control={formB.control}
+                              />
             </div>
 
             <DialogFooter className="pt-2">
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => onOpenChange(false)}
-                className="border-slate-600 text-slate-300 hover:bg-slate-700"
-              >
-                Cancel
-              </Button>
-              <Button
-                type="submit"
-                disabled={submittingB}
-                className="bg-indigo-500 hover:bg-indigo-600 text-white"
-              >
+              <Button type="button" variant="outline" onClick={() => onOpenChange(false)} className="border-slate-600 text-slate-300 hover:bg-slate-700">Cancel</Button>
+              <Button type="submit" disabled={submittingB} className="bg-indigo-500 hover:bg-indigo-600 text-white">
                 {submittingB && <Loader2 className="w-4 h-4 animate-spin mr-2" />}
                 Create &amp; Add Stock
               </Button>

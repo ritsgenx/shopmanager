@@ -40,6 +40,7 @@ export default function LineItemDialog({ open, onOpenChange, tenantId, products,
       product_id: product.id,
       product_name: [product.brand, product.model, product.variant && `(${product.variant})`].filter(Boolean).join(' '),
       gst_rate: Number(product.gst_rate ?? 18),
+      category: product.category,
     })
     onOpenChange(false)
   }
@@ -67,6 +68,7 @@ export default function LineItemDialog({ open, onOpenChange, tenantId, products,
       product_id: product.id,
       product_name: [values.brand, values.model, values.variant && `(${values.variant})`].filter(Boolean).join(' '),
       gst_rate: Number(values.gst_rate),
+      category: values.category,
     })
     onOpenChange(false)
   }

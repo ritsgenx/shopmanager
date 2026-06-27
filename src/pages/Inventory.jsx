@@ -1,23 +1,20 @@
 import React, { useState, useEffect, useMemo } from 'react'
+import { useNavigate, useLocation } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import {
-  Plus, Search, Pencil, Trash2, Package, AlertCircle, Loader2,
-  X, ArrowLeft, ChevronRight, Boxes, IndianRupee, AlertTriangle, PackageX,
+  Plus, Search, Package, X, ArrowLeft, ChevronRight,
+  Boxes, IndianRupee, AlertTriangle, PackageX,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { useAuth } from '@/context/AuthContext'
-import { getInventoryForBrand, getBrandSummary, deleteInventory } from '@/lib/inventory'
+import { getInventoryForBrand, getBrandSummary } from '@/lib/inventory'
 import { getProducts } from '@/lib/products'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Card, CardContent } from '@/components/ui/card'
-import {
-  Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
-} from '@/components/ui/dialog'
 import AddStockDialog from '@/components/inventory/AddStockDialog'
-import EditStockDialog from '@/components/inventory/EditStockDialog'
 
 function StatusBadge({ qty }) {
   if (qty === 0)
@@ -55,7 +52,7 @@ function BrandCard({ b, onClick }) {
   return (
     <Card className="cursor-pointer hover:border-indigo-500/60 transition-all duration-150 group border-border" onClick={onClick}>
       <CardContent className="p-4">
-        <div className="flex items-start justify-between mb-3">
+        <div className="flex items-start justify-between -mx-4 -mt-4 mb-3 px-4 pt-4 pb-3 bg-indigo-500/15 rounded-t-xl">
           <h3 className="font-bold text-base leading-tight">{b.brand}</h3>
           <ChevronRight className="w-4 h-4 text-muted-foreground group-hover:text-indigo-400 transition-colors shrink-0 mt-0.5" />
         </div>
@@ -91,110 +88,11 @@ function BrandCard({ b, onClick }) {
   )
 }
 
-function BatchDetailDialog({ open, onClose, brand, modelGroup, onEdit, onDelete }) {
-  if (!modelGroup) return null
-  const { model, batches, totalQty, minPrice, maxPrice, sources } = modelGroup
-  const fmt = (n) => `₹${Number(n).toLocaleString('en-IN')}`
-  const priceRange = minPrice === maxPrice ? fmt(minPrice) : `${fmt(minPrice)} – ${fmt(maxPrice)}`
-
-  return (
-    <Dialog open={open} onOpenChange={v => { if (!v) onClose() }}>
-      <DialogContent className="bg-slate-800 border-slate-700 text-white max-w-3xl max-h-[85vh] flex flex-col p-0">
-        {/* Header */}
-        <DialogHeader className="px-6 pt-5 pb-4 border-b border-slate-700 shrink-0">
-          <DialogTitle className="text-white text-lg">{brand} {model}</DialogTitle>
-          <div className="flex flex-wrap items-center gap-x-4 gap-y-2 mt-2">
-            <span className="text-sm text-slate-400">
-              <span className="font-semibold text-white">{totalQty}</span> units total
-            </span>
-            <span className="text-sm text-slate-400">
-              {priceRange} <span className="text-xs">purchase</span>
-            </span>
-            <div className="flex gap-1.5 flex-wrap">
-              {sources.map(s => <SourceBadge key={s} source={s} />)}
-            </div>
-          </div>
-        </DialogHeader>
-
-        {/* Batch Table — desktop */}
-        <div className="hidden md:block overflow-auto flex-1">
-          <table className="w-full text-sm">
-            <thead className="sticky top-0">
-              <tr className="bg-slate-900 text-slate-400 text-xs uppercase tracking-wider border-b border-slate-700">
-                <th className="px-4 py-3 text-left font-medium">Variant</th>
-                <th className="px-4 py-3 text-left font-medium">Color</th>
-                <th className="px-4 py-3 text-right font-medium">Purchase</th>
-                <th className="px-4 py-3 text-right font-medium">Selling</th>
-                <th className="px-4 py-3 text-right font-medium">Qty</th>
-                <th className="px-4 py-3 text-center font-medium">Source</th>
-                <th className="px-4 py-3 text-center font-medium">Status</th>
-                <th className="px-4 py-3 text-center font-medium">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-700">
-              {batches.map(batch => (
-                <tr key={batch.id} className="hover:bg-slate-700/30 transition-colors">
-                  <td className="px-4 py-3 text-slate-300">{batch.products?.variant ?? '—'}</td>
-                  <td className="px-4 py-3 text-slate-300">{batch.products?.color ?? '—'}</td>
-                  <td className="px-4 py-3 text-right font-medium text-white">{fmt(batch.purchase_price)}</td>
-                  <td className="px-4 py-3 text-right text-slate-300">{fmt(batch.selling_price)}</td>
-                  <td className="px-4 py-3 text-right font-semibold text-white">{batch.quantity_remaining}</td>
-                  <td className="px-4 py-3 text-center"><SourceBadge source={batch.stock_source} /></td>
-                  <td className="px-4 py-3 text-center"><StatusBadge qty={batch.quantity_remaining} /></td>
-                  <td className="px-4 py-3">
-                    <div className="flex items-center justify-center gap-1">
-                      <Button variant="ghost" size="icon" className="h-7 w-7 text-slate-400 hover:text-white"
-                        onClick={() => onEdit(batch)}>
-                        <Pencil className="w-3.5 h-3.5" />
-                      </Button>
-                      <Button variant="ghost" size="icon" className="h-7 w-7 text-slate-400 hover:text-red-400"
-                        onClick={() => onDelete(batch)}>
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </Button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-
-        {/* Batch Cards — mobile */}
-        <div className="md:hidden overflow-auto flex-1 p-4 space-y-3">
-          {batches.map(batch => (
-            <div key={batch.id} className="rounded-lg border border-slate-700 p-3 space-y-2">
-              <div className="flex items-start justify-between gap-2">
-                <p className="text-sm font-medium">
-                  {[batch.products?.variant, batch.products?.color].filter(Boolean).join(' · ') || '—'}
-                </p>
-                <SourceBadge source={batch.stock_source} />
-              </div>
-              <div className="grid grid-cols-3 gap-2 text-xs">
-                <div><p className="text-slate-400 mb-0.5">Purchase</p><p className="font-medium">{fmt(batch.purchase_price)}</p></div>
-                <div><p className="text-slate-400 mb-0.5">Selling</p><p className="font-medium">{fmt(batch.selling_price)}</p></div>
-                <div><p className="text-slate-400 mb-0.5">Qty</p><p className="font-semibold">{batch.quantity_remaining}</p></div>
-              </div>
-              <div className="flex gap-2 pt-2 border-t border-slate-700">
-                <Button variant="ghost" size="sm" className="flex-1 text-slate-400 hover:text-white h-7 text-xs"
-                  onClick={() => onEdit(batch)}>
-                  <Pencil className="w-3 h-3 mr-1" />Edit
-                </Button>
-                <Button variant="ghost" size="sm" className="flex-1 text-slate-400 hover:text-red-400 h-7 text-xs"
-                  onClick={() => onDelete(batch)}>
-                  <Trash2 className="w-3 h-3 mr-1" />Delete
-                </Button>
-              </div>
-            </div>
-          ))}
-        </div>
-      </DialogContent>
-    </Dialog>
-  )
-}
-
 const fmt = (n) => `₹${Number(n).toLocaleString('en-IN')}`
 
 export default function Inventory() {
+  const navigate = useNavigate()
+  const location = useLocation()
   const { currentTenant } = useAuth()
   const tenantId = currentTenant?.id
 
@@ -208,16 +106,9 @@ export default function Inventory() {
   const [loading, setLoading] = useState(false)
   const [searchInput, setSearchInput] = useState('')
 
-  // Level 2 — batch detail dialog
-  const [selectedModel, setSelectedModel] = useState(null)
-  const [batchDialogOpen, setBatchDialogOpen] = useState(false)
-
   // Shared
   const [products, setProducts] = useState([])
   const [addOpen, setAddOpen] = useState(false)
-  const [editItem, setEditItem] = useState(null)
-  const [deleteItem, setDeleteItem] = useState(null)
-  const [deleting, setDeleting] = useState(false)
 
   const fetchBrandSummary = async () => {
     if (!tenantId) return
@@ -246,7 +137,13 @@ export default function Inventory() {
     if (selectedBrand) fetchInventory()
   }, [tenantId, selectedBrand])
 
-  // Group inventory by model, compute summary per model
+  // Restore Level 2 when navigating back from Level 3 page
+  useEffect(() => {
+    if (location.state?.restoreBrand) {
+      setSelectedBrand(location.state.restoreBrand)
+    }
+  }, [])
+
   const groupedModels = useMemo(() => {
     const groups = {}
     for (const item of inventory) {
@@ -281,20 +178,11 @@ export default function Inventory() {
       .sort((a, b) => a.model.localeCompare(b.model))
   }, [inventory])
 
-  // Live client-side search filter
   const filteredModels = useMemo(() => {
     const term = searchInput.trim().toLowerCase()
     if (!term) return groupedModels
     return groupedModels.filter(g => g.model.toLowerCase().includes(term))
   }, [groupedModels, searchInput])
-
-  // Keep selectedModel in sync when inventory refreshes
-  useEffect(() => {
-    if (!selectedModel) return
-    const updated = groupedModels.find(g => g.model === selectedModel.model)
-    if (updated) setSelectedModel(updated)
-    else { setSelectedModel(null); setBatchDialogOpen(false) }
-  }, [groupedModels])
 
   const handleBrandClick = (brand) => {
     setSelectedBrand(brand)
@@ -306,28 +194,10 @@ export default function Inventory() {
     setSelectedBrand(null)
     setSearchInput('')
     setInventory([])
-    setBatchDialogOpen(false)
-    setSelectedModel(null)
   }
 
   const handleModelClick = (group) => {
-    setSelectedModel(group)
-    setBatchDialogOpen(true)
-  }
-
-  const handleDelete = async () => {
-    if (!deleteItem) return
-    setDeleting(true)
-    const { error } = await deleteInventory(tenantId, deleteItem.id)
-    setDeleting(false)
-    if (error) {
-      toast.error('Failed to delete item')
-    } else {
-      toast.success('Item deleted')
-      setDeleteItem(null)
-      fetchBrandSummary()
-      fetchInventory()
-    }
+    navigate(`/inventory/${encodeURIComponent(selectedBrand)}/${encodeURIComponent(group.model)}`)
   }
 
   const handleSuccess = () => {
@@ -335,7 +205,6 @@ export default function Inventory() {
     if (selectedBrand) fetchInventory()
   }
 
-  // Derived totals for Level 1 stat boxes
   const totalUnits = brandSummary.reduce((s, b) => s + b.totalUnits, 0)
   const totalValue = brandSummary.reduce((s, b) => s + b.inventoryValue, 0)
   const totalLow   = brandSummary.reduce((s, b) => s + b.lowStockCount, 0)
@@ -368,7 +237,6 @@ export default function Inventory() {
               </Button>
             </div>
 
-            {/* Live search */}
             <div className="relative max-w-sm">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
               <Input
@@ -576,17 +444,6 @@ export default function Inventory() {
         </>
       )}
 
-      {/* Batch detail dialog */}
-      <BatchDetailDialog
-        open={batchDialogOpen}
-        onClose={() => setBatchDialogOpen(false)}
-        brand={selectedBrand}
-        modelGroup={selectedModel}
-        onEdit={(batch) => { setBatchDialogOpen(false); setEditItem(batch) }}
-        onDelete={(batch) => { setBatchDialogOpen(false); setDeleteItem(batch) }}
-      />
-
-      {/* Shared dialogs */}
       <AddStockDialog
         open={addOpen}
         onOpenChange={setAddOpen}
@@ -594,45 +451,6 @@ export default function Inventory() {
         products={products}
         onSuccess={handleSuccess}
       />
-      <EditStockDialog
-        open={!!editItem}
-        onOpenChange={(open) => {
-          if (!open) {
-            setEditItem(null)
-            if (selectedModel) setBatchDialogOpen(true)
-          }
-        }}
-        item={editItem}
-        onSuccess={() => { handleSuccess(); if (selectedModel) setBatchDialogOpen(true) }}
-      />
-
-      <Dialog open={!!deleteItem} onOpenChange={(open) => { if (!open) setDeleteItem(null) }}>
-        <DialogContent className="bg-slate-800 border-slate-700 text-white max-w-sm p-6" onInteractOutside={(e) => e.preventDefault()}>
-          <DialogHeader>
-            <DialogTitle className="text-white">Delete Item</DialogTitle>
-          </DialogHeader>
-          <div className="flex items-start gap-3 py-2">
-            <AlertCircle className="w-5 h-5 text-red-400 shrink-0 mt-0.5" />
-            <p className="text-slate-300 text-sm">
-              Are you sure you want to delete{' '}
-              <span className="font-semibold text-white">
-                {deleteItem?.products?.brand} {deleteItem?.products?.model}
-              </span>
-              ? This cannot be undone.
-            </p>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setDeleteItem(null)}
-              className="border-slate-600 text-slate-300 hover:bg-slate-700">
-              Cancel
-            </Button>
-            <Button variant="destructive" onClick={handleDelete} disabled={deleting}>
-              {deleting && <Loader2 className="w-4 h-4 animate-spin mr-2" />}
-              Delete
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </motion.div>
   )
 }

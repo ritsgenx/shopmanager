@@ -8,6 +8,7 @@ import SuperAdminRoute from '@/components/shared/SuperAdminRoute'
 import Login from '@/pages/Login'
 import Dashboard from '@/pages/Dashboard'
 import Inventory from '@/pages/Inventory'
+import InventoryDevice from '@/pages/InventoryDevice'
 import Sales from '@/pages/Sales'
 import Customers from '@/pages/Customers'
 import Employees from '@/pages/Employees'
@@ -48,6 +49,7 @@ export default function App() {
           <Route element={<AppLayout />}>
             <Route path="/dashboard" element={<Dashboard />} />
             <Route path="/inventory" element={<Inventory />} />
+            <Route path="/inventory/:brand/:model" element={<InventoryDevice />} />
             <Route path="/sales" element={<Sales />} />
             <Route path="/sales/new" element={<NewSale />} />
             <Route path="/customers" element={<Customers />} />

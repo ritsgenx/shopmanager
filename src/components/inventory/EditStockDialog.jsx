@@ -27,21 +27,22 @@ export default function EditStockDialog({ open, onOpenChange, item, onSuccess })
       reset({
         purchase_price: item.purchase_price ?? '',
         selling_price: item.selling_price ?? '',
-        quantity: item.quantity ?? '',
         shelf_location: item.shelf_location ?? '',
         status: item.status ?? 'active',
+        imei_number: item.imei_number ?? '',
       })
     }
   }, [item, reset])
 
   const onSubmit = async (values) => {
-    const { error } = await updateInventory(currentTenant.id, item.id, {
+    const payload = {
       purchase_price: Number(values.purchase_price),
       selling_price: Number(values.selling_price),
-      quantity: Number(values.quantity),
       shelf_location: values.shelf_location || null,
       status: values.status,
-    })
+      imei_number: values.imei_number || null,
+    }
+    const { error } = await updateInventory(currentTenant.id, item.id, payload)
     if (error) {
       toast.error(error.message ?? 'Failed to update')
     } else {
@@ -103,32 +104,34 @@ export default function EditStockDialog({ open, onOpenChange, item, onSuccess })
             </div>
           </div>
 
-          {/* Stock + Location */}
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-1.5">
-              <Label className="text-slate-300">Total Quantity</Label>
-              <Input
-                {...register('quantity', {
-                  required: 'Required',
-                  min: { value: 0, message: 'Must be ≥ 0' },
-                })}
-                type="number"
-                className="bg-slate-700 border-slate-600 text-white"
-              />
-              {errors.quantity && (
-                <p className="text-red-400 text-xs">{errors.quantity.message}</p>
-              )}
-            </div>
-            <div className="space-y-1.5">
-              <Label className="text-slate-300">
-                Shelf Location <span className="text-slate-500 text-xs">(optional)</span>
-              </Label>
-              <Input
-                {...register('shelf_location')}
-                placeholder="e.g. A-12"
-                className="bg-slate-700 border-slate-600 text-white placeholder:text-slate-500"
-              />
-            </div>
+          {/* Shelf Location */}
+          <div className="space-y-1.5">
+            <Label className="text-slate-300">
+              Shelf Location <span className="text-slate-500 text-xs">(optional)</span>
+            </Label>
+            <Input
+              {...register('shelf_location')}
+              placeholder="e.g. A-12"
+              className="bg-slate-700 border-slate-600 text-white placeholder:text-slate-500"
+            />
+          </div>
+
+          {/* IMEI — always required */}
+          <div className="space-y-1.5">
+            <Label className="text-slate-300">IMEI <span className="text-red-400">*</span></Label>
+            <Input
+              {...register('imei_number', {
+                required: 'IMEI is required',
+                pattern: { value: /^\d{15}$/, message: 'IMEI must be exactly 15 digits' },
+              })}
+              placeholder="123456789012345"
+              maxLength={15}
+              inputMode="numeric"
+              className="bg-slate-700 border-slate-600 text-white placeholder:text-slate-500 font-mono"
+            />
+            {errors.imei_number && (
+              <p className="text-red-400 text-xs">{errors.imei_number.message}</p>
+            )}
           </div>
 
           {/* Status */}
