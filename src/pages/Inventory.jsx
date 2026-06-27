@@ -351,37 +351,39 @@ export default function Inventory() {
       {selectedBrand ? (
         /* ── Level 2: Brand Detail (grouped by model) ──────── */
         <>
-          {/* Header */}
-          <div className="flex items-center gap-3 flex-wrap">
-            <Button variant="ghost" size="icon" onClick={handleBack} className="shrink-0">
-              <ArrowLeft className="w-4 h-4" />
-            </Button>
-            <div className="flex-1 min-w-0">
-              <h1 className="text-2xl font-bold">{selectedBrand}</h1>
-              <p className="text-sm text-muted-foreground mt-0.5">
-                {loading ? '…' : `${filteredModels.length} model${filteredModels.length !== 1 ? 's' : ''}`}
-              </p>
+          {/* Sticky brand header + search */}
+          <div className="sticky top-0 z-20 bg-background -mx-4 md:-mx-6 px-4 md:px-6 py-3 border-b border-border">
+            <div className="flex items-center gap-3 flex-wrap mb-3">
+              <Button variant="ghost" size="icon" onClick={handleBack} className="shrink-0">
+                <ArrowLeft className="w-4 h-4" />
+              </Button>
+              <div className="flex-1 min-w-0">
+                <h1 className="text-2xl font-bold">{selectedBrand}</h1>
+                <p className="text-sm text-muted-foreground mt-0.5">
+                  {loading ? '…' : `${filteredModels.length} model${filteredModels.length !== 1 ? 's' : ''}`}
+                </p>
+              </div>
+              <Button onClick={() => setAddOpen(true)} className="bg-indigo-500 hover:bg-indigo-600 text-white shrink-0">
+                <Plus className="w-4 h-4 mr-2" />Add Stock
+              </Button>
             </div>
-            <Button onClick={() => setAddOpen(true)} className="bg-indigo-500 hover:bg-indigo-600 text-white shrink-0">
-              <Plus className="w-4 h-4 mr-2" />Add Stock
-            </Button>
-          </div>
 
-          {/* Live search */}
-          <div className="relative max-w-sm">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-            <Input
-              placeholder="Search model…"
-              value={searchInput}
-              onChange={e => setSearchInput(e.target.value)}
-              className="pl-9 pr-8"
-            />
-            {searchInput && (
-              <button onClick={() => setSearchInput('')}
-                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
-                <X className="w-3.5 h-3.5" />
-              </button>
-            )}
+            {/* Live search */}
+            <div className="relative max-w-sm">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+              <Input
+                placeholder="Search model…"
+                value={searchInput}
+                onChange={e => setSearchInput(e.target.value)}
+                className="pl-9 pr-8"
+              />
+              {searchInput && (
+                <button onClick={() => setSearchInput('')}
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </div>
           </div>
 
           {/* Desktop table — one row per model */}
@@ -458,7 +460,8 @@ export default function Inventory() {
           </div>
 
           {/* Mobile cards — one card per model */}
-          <div className="md:hidden space-y-3">
+          <div className="md:hidden relative">
+          <div className="space-y-3">
             {loading ? (
               Array.from({ length: 3 }).map((_, i) => (
                 <Card key={i}><CardContent className="p-4 space-y-3">
@@ -518,6 +521,10 @@ export default function Inventory() {
                 </Card>
               ))
             )}
+          </div>
+          {filteredModels.length > 3 && (
+            <div className="pointer-events-none absolute bottom-0 inset-x-0 h-24 bg-gradient-to-t from-background to-transparent" />
+          )}
           </div>
         </>
       ) : (
