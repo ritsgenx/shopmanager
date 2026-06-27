@@ -21,7 +21,7 @@ export default function Navbar({ onMenuClick }) {
   const title = pageLabels[location.pathname] ?? 'MobileShop'
 
   return (
-    <header className="flex items-center justify-between px-4 md:px-6 py-4 bg-white border-b border-border shadow-sm">
+    <header className="flex items-center justify-between px-4 md:px-6 py-4 bg-background border-b border-border shadow-sm">
       <div className="flex items-center gap-3">
         {/* Hamburger — mobile only */}
         <Button

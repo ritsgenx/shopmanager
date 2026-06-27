@@ -1,12 +1,13 @@
 import React, { useState, useEffect, useRef } from 'react'
-import { useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { useForm, Controller } from 'react-hook-form'
 import {
-  Loader2, MapPin, Upload, AlertCircle, Image, X, Navigation,
+  Loader2, MapPin, Upload, AlertCircle, Image, X, Navigation, Sun, SunMedium, Moon, Monitor,
 } from 'lucide-react'
 import { toast } from 'sonner'
+import { cn } from '@/lib/utils'
 import { useAuth } from '@/context/AuthContext'
+import { useTheme } from '@/context/ThemeContext'
 import { getTenantSettings, updateTenantSettings, uploadLogo } from '@/lib/settings'
 import { phoneKeyDown, phonePaste } from '@/lib/validations'
 import { Button } from '@/components/ui/button'
@@ -52,7 +53,8 @@ function FieldError({ error }) {
 
 export default function Settings() {
   const { currentUser, currentTenant, refreshTenant } = useAuth()
-  const navigate = useNavigate()
+  const { theme, setTheme } = useTheme()
+  const isEmployee = currentUser?.role === 'employee'
 
   // Logo state (handled outside RHF)
   const [logoFile, setLogoFile]       = useState(null)
@@ -68,13 +70,6 @@ export default function Settings() {
   const watchLat = watch('shop_lat')
   const watchLng = watch('shop_lng')
   const locationConfigured = watchLat && watchLng
-
-  // Redirect non-admins
-  useEffect(() => {
-    if (currentUser && currentUser.role === 'employee') {
-      navigate('/dashboard', { replace: true })
-    }
-  }, [currentUser, navigate])
 
   // Load existing settings
   useEffect(() => {
@@ -174,11 +169,47 @@ export default function Settings() {
     >
       {/* Header */}
       <div>
-        <h1 className="text-2xl font-bold">Shop Settings</h1>
-        <p className="text-sm text-muted-foreground">Configure your shop profile, branding and geo-fence location</p>
+        <h1 className="text-2xl font-bold">Settings</h1>
+        <p className="text-sm text-muted-foreground">
+          {isEmployee ? 'Manage your personal preferences' : 'Configure your shop profile, branding and geo-fence location'}
+        </p>
       </div>
 
-      <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
+      {/* ══ Appearance — visible to all users ════════════════════════════════ */}
+      <Card>
+        <CardHeader className="pb-2">
+          <CardTitle className="text-base">Appearance</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <Label>Color Theme</Label>
+          <div className="flex rounded-lg border border-border bg-muted/30 p-1 w-fit gap-1">
+            {[
+              { value: 'light', label: 'Light', icon: Sun },
+              { value: 'dim',   label: 'Dim',   icon: SunMedium },
+              { value: 'dark',  label: 'Dark',  icon: Moon },
+              { value: 'auto',  label: 'Auto',  icon: Monitor },
+            ].map(({ value, label, icon: Icon }) => (
+              <button
+                key={value}
+                type="button"
+                onClick={() => setTheme(value)}
+                className={cn(
+                  'flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-colors',
+                  theme === value
+                    ? 'bg-indigo-500 text-white shadow-sm'
+                    : 'text-muted-foreground hover:text-foreground'
+                )}
+              >
+                <Icon className="w-4 h-4" />
+                {label}
+              </button>
+            ))}
+          </div>
+          <p className="text-xs text-muted-foreground">Auto follows your device's system setting.</p>
+        </CardContent>
+      </Card>
+
+      {!isEmployee && <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
 
         {/* ══ Section A: Shop Information ═══════════════════════════════════ */}
         <Card>
@@ -464,7 +495,7 @@ export default function Settings() {
             }
           </Button>
         </div>
-      </form>
+      </form>}
     </motion.div>
   )
 }

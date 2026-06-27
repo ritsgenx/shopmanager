@@ -23,7 +23,7 @@ const navItems = [
   { to: '/attendance', icon: CalendarCheck, label: 'Attendance' },
   { to: '/commissions', icon: Wallet, label: 'Commissions' },
   { to: '/reports', icon: BarChart3, label: 'Reports' },
-  { to: '/settings', icon: Settings, label: 'Settings', adminOnly: true },
+  { to: '/settings', icon: Settings, label: 'Settings' },
 ]
 
 const superAdminNav = [

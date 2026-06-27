@@ -45,7 +45,7 @@ export default function AppLayout() {
   }, [location.pathname])
 
   return (
-    <div className="flex h-screen bg-gray-50 overflow-hidden">
+    <div className="flex h-screen bg-background overflow-hidden">
       {/* Mobile backdrop — tapping it closes the sidebar */}
       {mobileOpen && (
         <div
