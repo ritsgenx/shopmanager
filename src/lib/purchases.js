@@ -63,6 +63,7 @@ export async function createPurchase(headerData, lineItems, tenantId) {
       purchase_price: item.unit_price,
       selling_price: item.unit_price, // default — user can update in Inventory module
       quantity: item.quantity,
+      stock_source: headerData.purchase_type === 'official' ? 'official' : 'unofficial',
     })
 
     if (invError) return { error: invError }

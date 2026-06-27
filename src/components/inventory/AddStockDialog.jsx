@@ -16,9 +16,36 @@ import {
 } from '@/components/ui/select'
 
 // Shared purchase + stock fields used by both modes
-function PurchaseFields({ register, errors }) {
+function PurchaseFields({ register, errors, control }) {
   return (
     <>
+      <div className="space-y-1.5">
+        <Label className="text-slate-300">Stock Source</Label>
+        <Controller
+          name="stock_source"
+          control={control}
+          defaultValue="manual"
+          render={({ field }) => (
+            <Select onValueChange={field.onChange} value={field.value || 'manual'}>
+              <SelectTrigger className="bg-slate-700 border-slate-600 text-white">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent className="bg-slate-800 border-slate-600">
+                <SelectItem value="official" className="text-white focus:bg-slate-700 focus:text-white">
+                  Official Purchase Order
+                </SelectItem>
+                <SelectItem value="unofficial" className="text-white focus:bg-slate-700 focus:text-white">
+                  Unofficial Purchase Order
+                </SelectItem>
+                <SelectItem value="manual" className="text-white focus:bg-slate-700 focus:text-white">
+                  Direct / Manual Entry
+                </SelectItem>
+              </SelectContent>
+            </Select>
+          )}
+        />
+      </div>
+
       <div className="grid grid-cols-2 gap-3">
         <div className="space-y-1.5">
           <Label className="text-slate-300">Purchase Price (₹)</Label>
@@ -89,13 +116,13 @@ export default function AddStockDialog({ open, onOpenChange, tenantId, products,
   const [mode, setMode] = useState('existing')
 
   const formA = useForm({
-    defaultValues: { product_id: '', purchase_price: '', selling_price: '', quantity: '', imei_number: '' },
+    defaultValues: { product_id: '', purchase_price: '', selling_price: '', quantity: '', imei_number: '', stock_source: 'manual' },
   })
   const formB = useForm({
     defaultValues: {
       category: '', brand: '', model: '', variant: '', color: '',
       hsn_code: '', gst_rate: '18',
-      purchase_price: '', selling_price: '', quantity: '', imei_number: '',
+      purchase_price: '', selling_price: '', quantity: '', imei_number: '', stock_source: 'manual',
     },
   })
 
@@ -122,6 +149,7 @@ export default function AddStockDialog({ open, onOpenChange, tenantId, products,
       selling_price: Number(values.selling_price),
       quantity: Number(values.quantity),
       imei_number: values.imei_number || null,
+      stock_source: values.stock_source || 'manual',
     })
     if (error) {
       toast.error(error.message ?? 'Failed to add stock')
@@ -158,6 +186,7 @@ export default function AddStockDialog({ open, onOpenChange, tenantId, products,
       selling_price: Number(values.selling_price),
       quantity: Number(values.quantity),
       imei_number: values.imei_number || null,
+      stock_source: values.stock_source || 'manual',
     })
     if (invError) {
       toast.error(invError.message ?? 'Failed to add inventory')
@@ -240,7 +269,7 @@ export default function AddStockDialog({ open, onOpenChange, tenantId, products,
               )}
             </div>
 
-            <PurchaseFields register={formA.register} errors={errA} />
+            <PurchaseFields register={formA.register} errors={errA} control={formA.control} />
 
             <DialogFooter className="pt-2">
               <Button
@@ -367,7 +396,7 @@ export default function AddStockDialog({ open, onOpenChange, tenantId, products,
 
             <div className="border-t border-slate-600 pt-4">
               <p className="text-xs text-slate-400 mb-3 uppercase tracking-wider">Purchase Details</p>
-              <PurchaseFields register={formB.register} errors={errB} />
+              <PurchaseFields register={formB.register} errors={errB} control={formB.control} />
             </div>
 
             <DialogFooter className="pt-2">

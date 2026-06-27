@@ -3,7 +3,7 @@ import { supabase } from './supabase'
 export async function getBrandSummary(tenantId) {
   const { data, error } = await supabase
     .from('inventory')
-    .select('quantity_remaining, purchase_price, products(brand, model)')
+    .select('quantity_remaining, purchase_price, stock_source, products(brand, model)')
     .eq('tenant_id', tenantId)
     .limit(10000)
 
@@ -20,10 +20,14 @@ export async function getBrandSummary(tenantId) {
         modelsInStock: new Set(),
         lowStockCount: 0,
         outOfStockCount: 0,
+        officialUnits: 0,
+        unofficialUnits: 0,
+        manualUnits: 0,
       }
     }
     const b = brands[brand]
     const qty = item.quantity_remaining ?? 0
+    const src = item.stock_source ?? 'manual'
     b.totalUnits += qty
     b.inventoryValue += (item.purchase_price ?? 0) * qty
     if (qty === 0) {
@@ -32,6 +36,9 @@ export async function getBrandSummary(tenantId) {
       b.modelsInStock.add(item.products?.model)
       if (qty <= 3) b.lowStockCount++
     }
+    if (src === 'official')   b.officialUnits   += qty
+    else if (src === 'unofficial') b.unofficialUnits += qty
+    else                      b.manualUnits     += qty
   }
 
   const result = Object.values(brands)
@@ -39,6 +46,22 @@ export async function getBrandSummary(tenantId) {
     .sort((a, b) => b.totalUnits - a.totalUnits)
 
   return { data: result, error: null }
+}
+
+export async function getInventoryForBrand(tenantId, brand) {
+  const { data: prods } = await supabase
+    .from('products').select('id')
+    .eq('tenant_id', tenantId).eq('brand', brand)
+  const productIds = prods?.map(p => p.id) ?? []
+  if (productIds.length === 0) return { data: [], error: null }
+
+  const { data, error } = await supabase
+    .from('inventory')
+    .select(`*, products ( brand, model, variant, color, category, hsn_code, gst_rate )`)
+    .eq('tenant_id', tenantId)
+    .in('product_id', productIds)
+    .order('created_at', { ascending: false })
+  return { data: data ?? [], error }
 }
 
 export async function getInventory(tenantId, { searchTerm, brand, page = 1, pageSize = 50 } = {}) {
