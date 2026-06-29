@@ -32,7 +32,8 @@ export async function getPurchaseById(tenantId, id) {
 
 // Creates purchase header + line items + inventory rows sequentially.
 // No server-side transaction — if a step fails the error is returned immediately.
-export async function createPurchase(headerData, lineItems, tenantId) {
+// approvalMeta: { isOwner: bool, userId: string } — controls approval_status on inventory rows.
+export async function createPurchase(headerData, lineItems, tenantId, approvalMeta = { isOwner: true, userId: null }) {
   const { data: purchase, error: purchaseError } = await supabase
     .from('purchases')
     .insert(headerData)
@@ -57,6 +58,7 @@ export async function createPurchase(headerData, lineItems, tenantId) {
 
     if (itemError) return { error: itemError }
 
+    const now = new Date().toISOString()
     const { error: invError } = await createInventory({
       tenant_id: tenantId,
       product_id: item.product_id,
@@ -65,6 +67,10 @@ export async function createPurchase(headerData, lineItems, tenantId) {
       quantity: item.quantity,
       imei_number: item.imei_number || null,
       stock_source: headerData.purchase_type === 'official' ? 'official' : 'unofficial',
+      approval_status: approvalMeta.isOwner ? 'approved' : 'pending',
+      submitted_by: approvalMeta.userId,
+      approved_by: approvalMeta.isOwner ? approvalMeta.userId : null,
+      approved_at: approvalMeta.isOwner ? now : null,
     })
 
     if (invError) return { error: invError }

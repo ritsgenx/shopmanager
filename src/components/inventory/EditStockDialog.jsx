@@ -15,7 +15,8 @@ import {
 } from '@/components/ui/select'
 
 export default function EditStockDialog({ open, onOpenChange, item, onSuccess }) {
-  const { currentTenant } = useAuth()
+  const { currentTenant, currentUser } = useAuth()
+  const isOwner = currentUser?.role === 'admin'
   const {
     register, control, handleSubmit, reset,
     formState: { errors, isSubmitting },
@@ -35,18 +36,26 @@ export default function EditStockDialog({ open, onOpenChange, item, onSuccess })
   }, [item, reset])
 
   const onSubmit = async (values) => {
+    const wasApproved = item.approval_status === 'approved'
+    const resetApproval = !isOwner && wasApproved
+
     const payload = {
       purchase_price: Number(values.purchase_price),
       selling_price: Number(values.selling_price),
       shelf_location: values.shelf_location || null,
       status: values.status,
       imei_number: values.imei_number || null,
+      ...(resetApproval && {
+        approval_status: 'pending',
+        approved_by: null,
+        approved_at: null,
+      }),
     }
     const { error } = await updateInventory(currentTenant.id, item.id, payload)
     if (error) {
       toast.error(error.message ?? 'Failed to update')
     } else {
-      toast.success('Stock updated')
+      toast.success(resetApproval ? 'Stock updated — sent for re-approval' : 'Stock updated')
       onSuccess()
       onOpenChange(false)
     }

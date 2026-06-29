@@ -7,7 +7,7 @@ import {
 import {
   TrendingUp, TrendingDown, IndianRupee, ShoppingCart, Package, Users,
   AlertTriangle, Trophy, Activity, Target, Settings2, Loader2,
-  ArrowUpRight, ArrowDownRight, ShoppingBag, Star, Zap,
+  ArrowUpRight, ArrowDownRight, ShoppingBag, Star, Zap, CheckCircle, ClipboardList,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { useAuth } from '@/context/AuthContext'
@@ -23,6 +23,8 @@ import {
   getDashboardStats, getRevenueChart, getLowStockItems,
   getEmployeeLeaderboard, getRecentActivity, getDashboardSettings, saveDashboardSettings,
 } from '@/lib/dashboard'
+import { getPendingApprovals, approveInventory } from '@/lib/inventory'
+import { useNavigate } from 'react-router-dom'
 
 // ─── Widget registry ────────────────────────────────────────────────────────
 const WIDGET_DEFS = [
@@ -36,12 +38,14 @@ const WIDGET_DEFS = [
   { key: 'employeeLeaderboard', label: 'Employee Leaderboard', desc: 'Top 3 sellers this month' },
   { key: 'lowStockAlerts',      label: 'Low Stock List',       desc: 'Items that need restocking' },
   { key: 'recentActivity',      label: 'Recent Activity',      desc: 'Latest sales and purchases' },
+  { key: 'pendingApprovals',    label: 'Pending Approvals',    desc: 'Inventory items awaiting your approval' },
 ]
 
 const DEFAULT_WIDGETS = {
   todaySales: true, monthlyRevenue: true, cashFlow: true, customerPulse: true,
   monthlyTarget: false, revenueChart: true, smartAlerts: true,
   employeeLeaderboard: true, lowStockAlerts: true, recentActivity: true,
+  pendingApprovals: true,
 }
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
@@ -189,6 +193,7 @@ function CustomizeDialog({ widgets, targetAmount, onSave }) {
 export default function Dashboard() {
   const { currentTenant, currentUser } = useAuth()
   const tenantId = currentTenant?.id
+  const navigate = useNavigate()
 
   if (currentUser?.role === 'employee') return <EmployeeDashboard />
 
@@ -198,6 +203,8 @@ export default function Dashboard() {
   const [lowStock, setLowStock] = useState([])
   const [leaderboard, setLeaderboard] = useState([])
   const [activity, setActivity] = useState([])
+  const [pendingItems, setPendingItems] = useState([])
+  const [approvingId, setApprovingId] = useState(null)
   const [widgets, setWidgets] = useState(DEFAULT_WIDGETS)
   const [targetAmount, setTargetAmount] = useState(null)
 
@@ -205,13 +212,14 @@ export default function Dashboard() {
     if (!tenantId) return
     setLoading(true)
     try {
-      const [settings, statsData, chart, stock, board, feed] = await Promise.all([
+      const [settings, statsData, chart, stock, board, feed, pending] = await Promise.all([
         getDashboardSettings(tenantId),
         getDashboardStats(tenantId),
         getRevenueChart(tenantId),
         getLowStockItems(tenantId),
         getEmployeeLeaderboard(tenantId),
         getRecentActivity(tenantId),
+        getPendingApprovals(tenantId),
       ])
 
       const merged = { ...DEFAULT_WIDGETS, ...settings }
@@ -222,12 +230,25 @@ export default function Dashboard() {
       setLowStock(stock)
       setLeaderboard(board)
       setActivity(feed)
+      setPendingItems(pending.data ?? [])
     } catch {
       toast.error('Failed to load dashboard data')
     } finally {
       setLoading(false)
     }
   }, [tenantId])
+
+  const handleApprove = async (item) => {
+    setApprovingId(item.id)
+    const { error } = await approveInventory(tenantId, item.id, currentUser?.id)
+    setApprovingId(null)
+    if (error) {
+      toast.error('Failed to approve')
+    } else {
+      toast.success('Device approved')
+      setPendingItems(prev => prev.filter(p => p.id !== item.id))
+    }
+  }
 
   useEffect(() => { loadData() }, [loadData])
 
@@ -312,6 +333,75 @@ export default function Dashboard() {
           ))}
         </div>
       )}
+
+      {/* Pending Approvals */}
+      <AnimatePresence>
+        {widgets.pendingApprovals && (
+          <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}>
+            <Card className={`border-border/60 ${pendingItems.length > 0 ? 'border-yellow-500/40' : ''}`}>
+              <CardHeader className="pb-2">
+                <div className="flex items-center justify-between">
+                  <CardTitle className="text-base flex items-center gap-2">
+                    <ClipboardList className="w-4 h-4 text-yellow-400" /> Pending Approvals
+                    {pendingItems.length > 0 && (
+                      <span className="ml-1 inline-flex items-center justify-center w-5 h-5 rounded-full bg-yellow-500 text-black text-xs font-bold">
+                        {pendingItems.length}
+                      </span>
+                    )}
+                  </CardTitle>
+                  {pendingItems.length > 0 && (
+                    <button
+                      className="text-xs text-indigo-400 hover:text-indigo-300 transition-colors"
+                      onClick={() => navigate('/inventory')}
+                    >
+                      View Inventory →
+                    </button>
+                  )}
+                </div>
+                <CardDescription>Inventory items added by employees awaiting your review</CardDescription>
+              </CardHeader>
+              <CardContent>
+                {pendingItems.length === 0 ? (
+                  <div className="flex items-center gap-2.5 py-4 text-emerald-400">
+                    <CheckCircle className="w-4 h-4 shrink-0" />
+                    <p className="text-sm font-medium">All inventory is approved — no pending items</p>
+                  </div>
+                ) : (
+                  <div className="space-y-0 divide-y divide-border/50">
+                    {pendingItems.map((item) => {
+                      const product = item.products ?? {}
+                      const name = [product.brand, product.model, product.variant && `(${product.variant})`].filter(Boolean).join(' ')
+                      const isApproving = approvingId === item.id
+                      return (
+                        <div key={item.id} className="flex items-center gap-3 py-2.5">
+                          <div className="w-8 h-8 rounded-lg bg-yellow-500/10 flex items-center justify-center shrink-0">
+                            <Package className="w-4 h-4 text-yellow-400" />
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-medium truncate">{name || 'Unknown Product'}</p>
+                            <p className="text-xs text-muted-foreground font-mono">
+                              IMEI: {item.imei_number ?? '—'}
+                            </p>
+                          </div>
+                          <Button
+                            size="sm"
+                            className="shrink-0 h-7 text-xs bg-green-600 hover:bg-green-500 text-white px-3"
+                            onClick={() => handleApprove(item)}
+                            disabled={isApproving}
+                          >
+                            {isApproving ? <Loader2 className="w-3 h-3 animate-spin mr-1" /> : <CheckCircle className="w-3 h-3 mr-1" />}
+                            Approve
+                          </Button>
+                        </div>
+                      )
+                    })}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Monthly Target */}
       <AnimatePresence>

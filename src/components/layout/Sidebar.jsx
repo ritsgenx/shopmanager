@@ -8,6 +8,7 @@ import {
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useAuth } from '@/context/AuthContext'
+import { usePermissions } from '@/lib/permissions'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { Separator } from '@/components/ui/separator'
 import { toast } from 'sonner'
@@ -16,7 +17,7 @@ import ChangePasswordDialog from '@/components/shared/ChangePasswordDialog'
 const navItems = [
   { to: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
   { to: '/inventory', icon: Package, label: 'Inventory' },
-  { to: '/purchases', icon: ShoppingBag, label: 'Purchases', adminOnly: true },
+  { to: '/purchases', icon: ShoppingBag, label: 'Purchases', permKey: 'can_access_purchases' },
   { to: '/sales', icon: ShoppingCart, label: 'Sales' },
   { to: '/customers', icon: Users, label: 'Customers' },
   { to: '/employees', icon: UserCheck, label: 'Employees' },
@@ -35,6 +36,7 @@ export default function Sidebar({ mobileOpen, onClose }) {
   const { currentUser, currentTenant, logout } = useAuth()
   const navigate = useNavigate()
 
+  const { can } = usePermissions()
   const isSuperAdmin = currentUser?.role === 'super_admin'
   const shopName = isSuperAdmin ? 'Platform Admin' : (currentTenant?.shop_name ?? 'MobileShop')
   const shopSubtitle = isSuperAdmin ? 'SaaS Administration' : 'Management System'
@@ -110,7 +112,7 @@ export default function Sidebar({ mobileOpen, onClose }) {
       <nav className="flex-1 py-4 overflow-y-auto overflow-x-hidden">
         <ul className="space-y-1 px-2">
           {activeNav
-            .filter(item => !(item.adminOnly && currentUser?.role === 'employee'))
+            .filter(item => !item.permKey || can(item.permKey))
             .map(({ to, icon: Icon, label }) => (
               <li key={to}>
                 <NavLink

@@ -3,7 +3,7 @@ import { supabase } from './supabase'
 export async function getBrandSummary(tenantId) {
   const { data, error } = await supabase
     .from('inventory')
-    .select('quantity_remaining, purchase_price, stock_source, products(brand, model)')
+    .select('quantity_remaining, purchase_price, stock_source, approval_status, products(brand, model)')
     .eq('tenant_id', tenantId)
     .limit(10000)
 
@@ -23,6 +23,7 @@ export async function getBrandSummary(tenantId) {
         officialUnits: 0,
         unofficialUnits: 0,
         manualUnits: 0,
+        pendingCount: 0,
       }
     }
     const b = brands[brand]
@@ -39,6 +40,7 @@ export async function getBrandSummary(tenantId) {
     if (src === 'official')   b.officialUnits   += qty
     else if (src === 'unofficial') b.unofficialUnits += qty
     else                      b.manualUnits     += qty
+    if (item.approval_status === 'pending') b.pendingCount++
   }
 
   const result = Object.values(brands)
@@ -154,4 +156,40 @@ export async function deleteInventory(tenantId, id) {
     .eq('tenant_id', tenantId)
     .eq('id', id)
   return { error }
+}
+
+export async function getProductByImei(tenantId, imei) {
+  const { data, error } = await supabase
+    .from('inventory')
+    .select('product_id')
+    .eq('tenant_id', tenantId)
+    .eq('imei_number', imei)
+    .limit(1)
+    .maybeSingle()
+  return { data, error }
+}
+
+export async function getPendingApprovals(tenantId) {
+  const { data, error } = await supabase
+    .from('inventory')
+    .select(`*, products ( brand, model, variant, color, category )`)
+    .eq('tenant_id', tenantId)
+    .eq('approval_status', 'pending')
+    .order('created_at', { ascending: false })
+  return { data: data ?? [], error }
+}
+
+export async function approveInventory(tenantId, id, approvedBy) {
+  const { data, error } = await supabase
+    .from('inventory')
+    .update({
+      approval_status: 'approved',
+      approved_by: approvedBy,
+      approved_at: new Date().toISOString(),
+    })
+    .eq('tenant_id', tenantId)
+    .eq('id', id)
+    .select()
+    .single()
+  return { data, error }
 }

@@ -32,6 +32,7 @@ const PERM_GROUPS = [
   {
     label: 'Inventory',
     perms: [
+      { key: 'can_access_purchases',     label: 'Access Purchases' },
       { key: 'can_add_stock',            label: 'Add Stock' },
       { key: 'can_edit_stock',           label: 'Edit Stock' },
       { key: 'can_view_purchase_price',  label: 'View Purchase Price' },
@@ -64,8 +65,9 @@ const PERM_GROUPS = [
 const JUNIOR_DEFAULTS = {
   can_create_sale: true,  can_apply_discount: false,
   can_view_all_sales: false, can_delete_sale: false,
-  can_generate_invoice: true, can_add_stock: false,
-  can_edit_stock: false, can_view_purchase_price: false,
+  can_generate_invoice: true, can_access_purchases: false,
+  can_add_stock: false, can_edit_stock: false,
+  can_view_purchase_price: false,
   can_add_customer: true, can_edit_customer: false,
   can_delete_customer: false, can_send_whatsapp: false,
   can_send_sms: false, can_view_reports: false,
@@ -75,8 +77,8 @@ const JUNIOR_DEFAULTS = {
 const SENIOR_DEFAULTS = {
   ...JUNIOR_DEFAULTS,
   can_apply_discount: true, can_view_all_sales: true,
-  can_add_stock: true, can_view_purchase_price: true,
-  can_edit_customer: true,
+  can_access_purchases: true, can_add_stock: true,
+  can_view_purchase_price: true, can_edit_customer: true,
 }
 
 const ALL_PERM_KEYS = PERM_GROUPS.flatMap((g) => g.perms.map((p) => p.key))

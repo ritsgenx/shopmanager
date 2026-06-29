@@ -3,11 +3,11 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import {
   ArrowLeft, Plus, Search, Pencil, Trash2, AlertCircle, Loader2,
-  Smartphone, X, ChevronRight,
+  Smartphone, X, ChevronRight, CheckCircle,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { useAuth } from '@/context/AuthContext'
-import { getInventoryForModel, deleteInventory } from '@/lib/inventory'
+import { getInventoryForModel, deleteInventory, approveInventory } from '@/lib/inventory'
 import { getProducts } from '@/lib/products'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -34,6 +34,12 @@ function SourceBadge({ source }) {
   return <Badge className="bg-slate-500/20 text-slate-400 border-slate-500/30 hover:bg-slate-500/20">Manual</Badge>
 }
 
+function ApprovalBadge({ status }) {
+  if (status === 'pending')
+    return <Badge className="bg-yellow-500/20 text-yellow-400 border-yellow-500/30 hover:bg-yellow-500/20">Pending Approval</Badge>
+  return <Badge className="bg-green-500/20 text-green-400 border-green-500/30 hover:bg-green-500/20">Approved</Badge>
+}
+
 const fmt = (n) => `₹${Number(n).toLocaleString('en-IN')}`
 
 export default function InventoryDevice() {
@@ -41,8 +47,9 @@ export default function InventoryDevice() {
   const brand = decodeURIComponent(brandParam)
   const model = decodeURIComponent(modelParam)
   const navigate = useNavigate()
-  const { currentTenant } = useAuth()
+  const { currentTenant, currentUser } = useAuth()
   const tenantId = currentTenant?.id
+  const isOwner = currentUser?.role === 'admin'
 
   const [devices, setDevices] = useState([])
   const [loading, setLoading] = useState(true)
@@ -50,6 +57,7 @@ export default function InventoryDevice() {
   const [editItem, setEditItem] = useState(null)
   const [deleteItem, setDeleteItem] = useState(null)
   const [deleting, setDeleting] = useState(false)
+  const [approvingId, setApprovingId] = useState(null)
   const [products, setProducts] = useState([])
   const [addOpen, setAddOpen] = useState(false)
 
@@ -94,6 +102,18 @@ export default function InventoryDevice() {
     } else {
       toast.success('Device deleted')
       setDeleteItem(null)
+      fetchDevices()
+    }
+  }
+
+  const handleApprove = async (device) => {
+    setApprovingId(device.id)
+    const { error } = await approveInventory(tenantId, device.id, currentUser?.id)
+    setApprovingId(null)
+    if (error) {
+      toast.error('Failed to approve')
+    } else {
+      toast.success('Device approved')
       fetchDevices()
     }
   }
@@ -177,6 +197,7 @@ export default function InventoryDevice() {
               <th className="px-4 py-3 text-right font-medium">Selling</th>
               <th className="px-4 py-3 text-center font-medium">Source</th>
               <th className="px-4 py-3 text-center font-medium">Status</th>
+              <th className="px-4 py-3 text-center font-medium">Approval</th>
               <th className="px-4 py-3 text-center font-medium">Actions</th>
             </tr>
           </thead>
@@ -191,7 +212,7 @@ export default function InventoryDevice() {
               ))
             ) : filtered.length === 0 ? (
               <tr>
-                <td colSpan={8} className="px-4 py-20 text-center text-muted-foreground">
+                <td colSpan={9} className="px-4 py-20 text-center text-muted-foreground">
                   <Smartphone className="w-10 h-10 mx-auto mb-2 opacity-25" />
                   <p className="font-medium">
                     {searchInput ? `No devices matching "${searchInput}"` : 'No devices yet — click Add Device'}
@@ -199,33 +220,45 @@ export default function InventoryDevice() {
                 </td>
               </tr>
             ) : (
-              filtered.map(device => (
-                <tr key={device.id} className="hover:bg-muted/20 transition-colors">
-                  <td className="px-4 py-3 font-mono text-sm tracking-wider">
-                    {device.imei_number
-                      ? device.imei_number
-                      : <span className="text-muted-foreground text-xs italic">no IMEI</span>}
-                  </td>
-                  <td className="px-4 py-3 text-muted-foreground">{device.products?.variant ?? '—'}</td>
-                  <td className="px-4 py-3 text-muted-foreground">{device.products?.color ?? '—'}</td>
-                  <td className="px-4 py-3 text-right font-medium">{fmt(device.purchase_price)}</td>
-                  <td className="px-4 py-3 text-right text-muted-foreground">{fmt(device.selling_price)}</td>
-                  <td className="px-4 py-3 text-center"><SourceBadge source={device.stock_source} /></td>
-                  <td className="px-4 py-3 text-center"><StatusBadge qty={device.quantity_remaining ?? 0} /></td>
-                  <td className="px-4 py-3">
-                    <div className="flex items-center justify-center gap-1">
-                      <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-foreground"
-                        onClick={() => setEditItem(device)}>
-                        <Pencil className="w-3.5 h-3.5" />
-                      </Button>
-                      <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-red-400"
-                        onClick={() => setDeleteItem(device)}>
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </Button>
-                    </div>
-                  </td>
-                </tr>
-              ))
+              filtered.map(device => {
+                const isPending = device.approval_status === 'pending'
+                const isApproving = approvingId === device.id
+                return (
+                  <tr key={device.id}
+                    className={`hover:bg-muted/20 transition-colors ${isPending ? 'border-l-2 border-yellow-400/60' : ''}`}>
+                    <td className="px-4 py-3 font-mono text-sm tracking-wider">
+                      {device.imei_number
+                        ? device.imei_number
+                        : <span className="text-muted-foreground text-xs italic">no IMEI</span>}
+                    </td>
+                    <td className="px-4 py-3 text-muted-foreground">{device.products?.variant ?? '—'}</td>
+                    <td className="px-4 py-3 text-muted-foreground">{device.products?.color ?? '—'}</td>
+                    <td className="px-4 py-3 text-right font-medium">{fmt(device.purchase_price)}</td>
+                    <td className="px-4 py-3 text-right text-muted-foreground">{fmt(device.selling_price)}</td>
+                    <td className="px-4 py-3 text-center"><SourceBadge source={device.stock_source} /></td>
+                    <td className="px-4 py-3 text-center"><StatusBadge qty={device.quantity_remaining ?? 0} /></td>
+                    <td className="px-4 py-3 text-center"><ApprovalBadge status={device.approval_status ?? 'approved'} /></td>
+                    <td className="px-4 py-3">
+                      <div className="flex items-center justify-center gap-1">
+                        {isOwner && isPending && (
+                          <Button variant="ghost" size="icon" className="h-7 w-7 text-green-400 hover:text-green-300 hover:bg-green-500/10"
+                            title="Approve" onClick={() => handleApprove(device)} disabled={isApproving}>
+                            {isApproving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <CheckCircle className="w-3.5 h-3.5" />}
+                          </Button>
+                        )}
+                        <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-foreground"
+                          onClick={() => setEditItem(device)}>
+                          <Pencil className="w-3.5 h-3.5" />
+                        </Button>
+                        <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-red-400"
+                          onClick={() => setDeleteItem(device)}>
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </Button>
+                      </div>
+                    </td>
+                  </tr>
+                )
+              })
             )}
           </tbody>
         </table>
@@ -252,52 +285,69 @@ export default function InventoryDevice() {
             </p>
           </div>
         ) : (
-          filtered.map(device => (
-            <Card key={device.id} className="border-border">
-              <CardContent className="p-4">
-                <div className="flex items-start justify-between gap-2 mb-3">
-                  <div className="min-w-0 flex-1">
-                    <p className="text-xs text-muted-foreground mb-0.5">IMEI</p>
-                    <p className="font-mono text-sm font-semibold tracking-wider break-all">
-                      {device.imei_number ?? <span className="text-muted-foreground italic text-xs">no IMEI</span>}
+          filtered.map(device => {
+            const isPending = device.approval_status === 'pending'
+            const isApproving = approvingId === device.id
+            return (
+              <Card key={device.id} className={`border-border ${isPending ? 'border-l-2 border-yellow-400/60' : ''}`}>
+                <CardContent className="p-4">
+                  {isPending && (
+                    <div className="flex items-center gap-1.5 mb-3 px-2 py-1.5 rounded-lg bg-yellow-500/10 border border-yellow-500/20">
+                      <ApprovalBadge status="pending" />
+                      {isOwner && (
+                        <Button variant="ghost" size="sm" className="ml-auto h-6 text-xs text-green-400 hover:text-green-300 hover:bg-green-500/10 px-2"
+                          onClick={() => handleApprove(device)} disabled={isApproving}>
+                          {isApproving ? <Loader2 className="w-3 h-3 animate-spin mr-1" /> : <CheckCircle className="w-3 h-3 mr-1" />}
+                          Approve
+                        </Button>
+                      )}
+                    </div>
+                  )}
+
+                  <div className="flex items-start justify-between gap-2 mb-3">
+                    <div className="min-w-0 flex-1">
+                      <p className="text-xs text-muted-foreground mb-0.5">IMEI</p>
+                      <p className="font-mono text-sm font-semibold tracking-wider break-all">
+                        {device.imei_number ?? <span className="text-muted-foreground italic text-xs">no IMEI</span>}
+                      </p>
+                    </div>
+                    <div className="flex flex-col items-end gap-1 shrink-0">
+                      <SourceBadge source={device.stock_source} />
+                      <StatusBadge qty={device.quantity_remaining ?? 0} />
+                    </div>
+                  </div>
+
+                  {(device.products?.variant || device.products?.color) && (
+                    <p className="text-xs text-muted-foreground mb-3">
+                      {[device.products?.variant, device.products?.color].filter(Boolean).join(' · ')}
                     </p>
-                  </div>
-                  <div className="flex flex-col items-end gap-1 shrink-0">
-                    <SourceBadge source={device.stock_source} />
-                    <StatusBadge qty={device.quantity_remaining ?? 0} />
-                  </div>
-                </div>
+                  )}
 
-                {(device.products?.variant || device.products?.color) && (
-                  <p className="text-xs text-muted-foreground mb-3">
-                    {[device.products?.variant, device.products?.color].filter(Boolean).join(' · ')}
-                  </p>
-                )}
-
-                <div className="grid grid-cols-2 gap-2 text-sm mb-3">
-                  <div>
-                    <p className="text-xs text-muted-foreground mb-0.5">Purchase</p>
-                    <p className="font-semibold">{fmt(device.purchase_price)}</p>
+                  <div className="grid grid-cols-2 gap-2 text-sm mb-3">
+                    <div>
+                      <p className="text-xs text-muted-foreground mb-0.5">Purchase</p>
+                      <p className="font-semibold">{fmt(device.purchase_price)}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-muted-foreground mb-0.5">Selling</p>
+                      <p className="font-medium">{fmt(device.selling_price)}</p>
+                    </div>
                   </div>
-                  <div>
-                    <p className="text-xs text-muted-foreground mb-0.5">Selling</p>
-                    <p className="font-medium">{fmt(device.selling_price)}</p>
-                  </div>
-                </div>
 
-                <div className="flex gap-2 pt-3 border-t border-border">
-                  <Button variant="ghost" size="sm" className="flex-1 text-muted-foreground hover:text-foreground h-7 text-xs"
-                    onClick={() => setEditItem(device)}>
-                    <Pencil className="w-3 h-3 mr-1" />Edit
-                  </Button>
-                  <Button variant="ghost" size="sm" className="flex-1 text-muted-foreground hover:text-red-400 h-7 text-xs"
-                    onClick={() => setDeleteItem(device)}>
-                    <Trash2 className="w-3 h-3 mr-1" />Delete
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
-          ))
+                  <div className="flex gap-2 pt-3 border-t border-border">
+                    <Button variant="ghost" size="sm" className="flex-1 text-muted-foreground hover:text-foreground h-7 text-xs"
+                      onClick={() => setEditItem(device)}>
+                      <Pencil className="w-3 h-3 mr-1" />Edit
+                    </Button>
+                    <Button variant="ghost" size="sm" className="flex-1 text-muted-foreground hover:text-red-400 h-7 text-xs"
+                      onClick={() => setDeleteItem(device)}>
+                      <Trash2 className="w-3 h-3 mr-1" />Delete
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+            )
+          })
         )}
       </div>
 

@@ -55,6 +55,7 @@ const PERM_GROUPS = [
     { key: 'can_generate_invoice', label: 'Generate Invoice' },
   ]},
   { label: 'Inventory', perms: [
+    { key: 'can_access_purchases',    label: 'Access Purchases' },
     { key: 'can_add_stock',           label: 'Add Stock' },
     { key: 'can_edit_stock',          label: 'Edit Stock' },
     { key: 'can_view_purchase_price', label: 'View Purchase Price' },

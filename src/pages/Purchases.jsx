@@ -5,6 +5,7 @@ import { Plus, ReceiptText, AlertCircle, Loader2, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
 import { useAuth } from '@/context/AuthContext'
+import { usePermissions } from '@/lib/permissions'
 import { getPurchases, getPurchaseById, deletePurchase } from '@/lib/purchases'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -48,9 +49,9 @@ function PaymentBadge({ status }) {
 export default function Purchases() {
   const navigate = useNavigate()
   const { currentUser, currentTenant } = useAuth()
+  const { can } = usePermissions()
 
-  // Role guard — employees cannot access this page
-  if (currentUser?.role === 'employee') return <Navigate to="/dashboard" replace />
+  if (!can('can_access_purchases')) return <Navigate to="/dashboard" replace />
 
   const tenantId = currentTenant?.id
   const [filter, setFilter] = useState('all')

@@ -151,7 +151,10 @@ export default function NewPurchase() {
       grand_total: grandTotal,
     }
 
-    const { error } = await createPurchase(headerData, processedItems, tenantId)
+    const { error } = await createPurchase(headerData, processedItems, tenantId, {
+      isOwner: currentUser?.role === 'admin',
+      userId: currentUser?.id,
+    })
     submittingRef.current = false
     setSubmitting(false)
 
