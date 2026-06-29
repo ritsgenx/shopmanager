@@ -8,19 +8,28 @@ import {
 
 const SCANNER_DIV_ID = 'imei-barcode-scanner'
 
+// Mimics the classic handheld barcode scanner beep used in retail shops:
+// two sharp square-wave chirps at 1800 Hz — loud, crisp, instant on/off.
 function playBeep() {
   try {
     const ctx = new (window.AudioContext || window.webkitAudioContext)()
-    const osc = ctx.createOscillator()
-    const gain = ctx.createGain()
-    osc.connect(gain)
-    gain.connect(ctx.destination)
-    osc.type = 'sine'
-    osc.frequency.setValueAtTime(880, ctx.currentTime)
-    gain.gain.setValueAtTime(0.4, ctx.currentTime)
-    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.15)
-    osc.start(ctx.currentTime)
-    osc.stop(ctx.currentTime + 0.15)
+
+    const chirp = (startAt, duration = 0.08) => {
+      const osc  = ctx.createOscillator()
+      const gain = ctx.createGain()
+      osc.connect(gain)
+      gain.connect(ctx.destination)
+      osc.type = 'square'
+      osc.frequency.setValueAtTime(1800, startAt)
+      gain.gain.setValueAtTime(0.7, startAt)
+      gain.gain.setValueAtTime(0.001, startAt + duration)
+      osc.start(startAt)
+      osc.stop(startAt + duration)
+    }
+
+    // Two quick chirps with a 60 ms gap — identical to Zebra/Honeywell handheld scanners
+    chirp(ctx.currentTime)
+    chirp(ctx.currentTime + 0.14)
   } catch {}
 }
 
