@@ -8,6 +8,22 @@ import {
 
 const SCANNER_DIV_ID = 'imei-barcode-scanner'
 
+function playBeep() {
+  try {
+    const ctx = new (window.AudioContext || window.webkitAudioContext)()
+    const osc = ctx.createOscillator()
+    const gain = ctx.createGain()
+    osc.connect(gain)
+    gain.connect(ctx.destination)
+    osc.type = 'sine'
+    osc.frequency.setValueAtTime(880, ctx.currentTime)
+    gain.gain.setValueAtTime(0.4, ctx.currentTime)
+    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.15)
+    osc.start(ctx.currentTime)
+    osc.stop(ctx.currentTime + 0.15)
+  } catch {}
+}
+
 export default function BarcodeScanner({ open, onClose, onScan }) {
   const scannerRef = useRef(null)
   const [error, setError] = useState(null)
@@ -40,6 +56,7 @@ export default function BarcodeScanner({ open, onClose, onScan }) {
           // Find the first run of exactly 15 consecutive digits (the IMEI)
           const match = decodedText.match(/\d{15}/)
           if (match) {
+            playBeep()
             onScan(match[0])
             stopScanner().then(onClose)
           }
