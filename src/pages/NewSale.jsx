@@ -1,15 +1,16 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
-import { ArrowLeft, Plus, Trash2, Search, Loader2, CheckCircle2, Phone, X } from 'lucide-react'
+import { ArrowLeft, Plus, Trash2, Search, Loader2, CheckCircle2, Phone, X, Camera, AlertCircle, Smartphone } from 'lucide-react'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
 import { useAuth } from '@/context/AuthContext'
-import { getInventory } from '@/lib/inventory'
+import { getInventory, getProductByImei } from '@/lib/inventory'
 import { getCustomerByPhone, createCustomer } from '@/lib/customers'
 import { getTenantUsers } from '@/lib/users'
 import { createSale } from '@/lib/sales'
 import { generateInvoicePdf } from '@/lib/generateInvoicePdf'
+import BarcodeScanner from '@/components/inventory/BarcodeScanner'
 import { phoneKeyDown, phonePaste } from '@/lib/validations'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -127,6 +128,15 @@ export default function NewSale() {
 
   // Cart
   const [cart, setCart] = useState([])
+
+  // IMEI scan tab
+  const [activeTab, setActiveTab] = useState('scan')
+  const [scannerOpen, setScannerOpen] = useState(false)
+  const [imeiInput, setImeiInput] = useState('')
+  const [imeiSearching, setImeiSearching] = useState(false)
+  const [scannedDevice, setScannedDevice] = useState(null)
+  const [scanSellPrice, setScanSellPrice] = useState('')
+  const [scanDiscount, setScanDiscount] = useState(0)
 
   // Payment
   const [employeeId, setEmployeeId] = useState('')
@@ -332,6 +342,70 @@ export default function NewSale() {
     }
 
     navigate('/sales')
+  }
+
+  const isOwner = currentUser?.role === 'admin'
+
+  // ── IMEI scan handlers ───────────────────────────────────────────────────
+  const clearScan = () => {
+    setImeiInput('')
+    setScannedDevice(null)
+    setScanSellPrice('')
+    setScanDiscount(0)
+  }
+
+  const handleImeiLookup = async (imei) => {
+    setImeiSearching(true)
+    setScannedDevice(null)
+    const { data, error } = await getProductByImei(tenantId, imei)
+    setImeiSearching(false)
+    if (error || !data) {
+      setScannedDevice({ _notFound: true })
+      return
+    }
+    setScannedDevice(data)
+    setScanSellPrice(String(data.selling_price || data.purchase_price || ''))
+    setScanDiscount(0)
+  }
+
+  const handleImeiInputChange = (val) => {
+    const digits = val.replace(/\D/g, '').slice(0, 15)
+    setImeiInput(digits)
+    setScannedDevice(null)
+    if (digits.length === 15) handleImeiLookup(digits)
+  }
+
+  const handleScanResult = (imei) => {
+    setImeiInput(imei)
+    handleImeiLookup(imei)
+  }
+
+  const handleAddScannedToCart = () => {
+    if (!scannedDevice || scannedDevice._notFound) return
+    const price = Number(scanSellPrice)
+    if (!price || price <= 0) { toast.error('Enter a valid selling price'); return }
+    if (cart.some(i => i.imei_number === scannedDevice.imei_number)) {
+      toast.error('This IMEI is already in the cart'); return
+    }
+    const p = scannedDevice.products ?? {}
+    const productName = [p.brand, p.model, p.variant, p.color].filter(Boolean).join(' ')
+    setCart(prev => [...prev, {
+      _id: nextId(),
+      inventory_id: scannedDevice.id,
+      product_id: scannedDevice.product_id,
+      product_name: productName,
+      products: scannedDevice.products,
+      gst_rate: p.gst_rate || 0,
+      hsn_code: p.hsn_code,
+      category: p.category,
+      imei_number: scannedDevice.imei_number,
+      quantity: 1,
+      unit_price: price,
+      discount_amount: Number(scanDiscount) || 0,
+      max_qty: 1,
+    }])
+    clearScan()
+    toast.success('Added to cart')
   }
 
   const custDisplayName = selectedCustomer
@@ -646,76 +720,239 @@ export default function NewSale() {
         <div className="lg:col-span-3 space-y-4">
           <div className="flex items-center gap-2 px-1">
             <div className="w-6 h-6 rounded-full bg-indigo-500 text-white text-xs flex items-center justify-center font-bold shrink-0">2</div>
-            <span className="text-sm font-medium text-muted-foreground">Add Products</span>
+            <span className="text-sm font-medium text-muted-foreground">Add Items</span>
+            <div className="ml-auto flex gap-1 border border-border rounded-lg p-1">
+              {[{ v: 'scan', l: 'Scan IMEI' }, { v: 'search', l: 'Search by Name' }].map(({ v, l }) => (
+                <button
+                  key={v}
+                  type="button"
+                  onClick={() => { setActiveTab(v); clearScan(); setSelectedInv(null); setProductSearch('') }}
+                  className={cn(
+                    'px-3 py-1 text-xs font-medium rounded transition-colors',
+                    activeTab === v ? 'bg-indigo-500 text-white' : 'text-muted-foreground hover:text-foreground'
+                  )}
+                >{l}</button>
+              ))}
+            </div>
           </div>
 
-          {/* Product search card */}
-          <Card>
-            <CardContent className="pt-5 space-y-4">
-              <div className="space-y-1.5">
-                <Label>Search Product</Label>
-                <ProductSearchDropdown
-                  value={productSearch}
-                  onChange={setProductSearch}
-                  placeholder="Brand, model, variant…"
-                  items={filteredInventory}
-                  onClear={() => { setProductSearch(''); setSelectedInv(null) }}
-                  renderItem={(inv) => (
-                    <div>
-                      <span className="font-medium">
-                        {[inv.products?.brand, inv.products?.model, inv.products?.variant, inv.products?.color].filter(Boolean).join(' ')}
-                      </span>
-                      <span className={cn('ml-2 text-xs', inv.quantity_remaining <= 5 ? 'text-amber-400' : 'text-emerald-400')}>
-                        {inv.quantity_remaining} left
-                      </span>
-                      <span className="ml-2 text-xs text-muted-foreground">· Sell: {fmt(inv.selling_price)}</span>
-                    </div>
-                  )}
-                  onSelect={handleSelectProduct}
-                />
-              </div>
-
-              {selectedInv && (
-                <>
-                  {isSmartphone ? (
-                    <div className="space-y-1.5">
-                      <Label>IMEI Number <span className="text-red-400">*</span></Label>
+          {/* ── Tab A: Scan IMEI ── */}
+          {activeTab === 'scan' && (
+            <Card>
+              <CardContent className="pt-5 space-y-4">
+                <div className="space-y-1.5">
+                  <Label>IMEI Number</Label>
+                  <div className="flex gap-2">
+                    <div className="relative flex-1">
                       <Input
-                        value={imeiNumber}
-                        onChange={(e) => setImeiNumber(e.target.value)}
-                        placeholder="15-digit IMEI number"
+                        value={imeiInput}
+                        onChange={e => handleImeiInputChange(e.target.value)}
+                        placeholder="Type 15-digit IMEI or scan…"
                         maxLength={15}
+                        inputMode="numeric"
+                        className="font-mono pr-8"
                       />
+                      {imeiSearching && (
+                        <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 animate-spin text-muted-foreground" />
+                      )}
                     </div>
-                  ) : (
-                    <div className="space-y-1.5">
-                      <Label>Quantity <span className="text-xs text-muted-foreground">(max {selectedInv.quantity_remaining})</span></Label>
-                      <Input
-                        type="number" min={1} max={selectedInv.quantity_remaining}
-                        value={qty} onChange={(e) => setQty(e.target.value)}
-                        className="w-32"
-                      />
-                    </div>
-                  )}
-
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-1.5">
-                      <Label>Unit Price <span className="text-red-400">*</span></Label>
-                      <Input type="number" min={0} step="0.01" value={unitPrice} onChange={(e) => setUnitPrice(e.target.value)} placeholder="0.00" />
-                    </div>
-                    <div className="space-y-1.5">
-                      <Label>Discount <span className="text-xs text-muted-foreground">(optional)</span></Label>
-                      <Input type="number" min={0} step="0.01" value={lineDiscount} onChange={(e) => setLineDiscount(e.target.value)} placeholder="0.00" />
-                    </div>
+                    <Button type="button" variant="outline" onClick={() => setScannerOpen(true)} className="shrink-0 gap-2">
+                      <Camera className="w-4 h-4" />Scan
+                    </Button>
+                    {(imeiInput || scannedDevice) && (
+                      <Button type="button" variant="ghost" size="icon" onClick={clearScan} className="shrink-0">
+                        <X className="w-4 h-4" />
+                      </Button>
+                    )}
                   </div>
+                </div>
 
-                  <Button type="button" onClick={handleAddToCart} className="w-full bg-indigo-500 hover:bg-indigo-600 text-white">
-                    <Plus className="w-4 h-4 mr-2" />Add to Cart
-                  </Button>
-                </>
-              )}
-            </CardContent>
-          </Card>
+                {/* Device Confirm Card */}
+                {scannedDevice && (
+                  scannedDevice._notFound ? (
+                    <div className="rounded-xl border border-red-500/30 bg-red-500/10 p-4 flex items-center gap-3">
+                      <AlertCircle className="w-5 h-5 text-red-400 shrink-0" />
+                      <div>
+                        <p className="font-medium text-red-400 text-sm">Device not found</p>
+                        <p className="text-xs text-muted-foreground mt-0.5">This IMEI is not registered in inventory</p>
+                      </div>
+                    </div>
+                  ) : (() => {
+                    const p = scannedDevice.products ?? {}
+                    const isSold = scannedDevice.status === 'sold'
+                    const isRejected = scannedDevice.approval_status === 'rejected'
+                    const isPending = scannedDevice.approval_status === 'pending'
+                    const alreadyInCart = cart.some(i => i.imei_number === scannedDevice.imei_number)
+                    const canAdd = !isSold && !isRejected && !(isPending && !isOwner) && !alreadyInCart
+                    const sourceBadge = {
+                      official: 'bg-green-500/20 text-green-400 border-green-500/30',
+                      unofficial: 'bg-amber-500/20 text-amber-400 border-amber-500/30',
+                    }[scannedDevice.stock_source] ?? 'bg-slate-500/20 text-slate-400 border-slate-500/30'
+                    const sourceLabel = { official: 'Official', unofficial: 'Unofficial', manual: 'Manual' }[scannedDevice.stock_source] ?? 'Manual'
+
+                    return (
+                      <div className="rounded-xl border border-border overflow-hidden">
+                        {/* Status banner */}
+                        {alreadyInCart && (
+                          <div className="px-4 py-2.5 bg-amber-500/10 border-b border-amber-500/20 flex items-center gap-2">
+                            <AlertCircle className="w-4 h-4 text-amber-400 shrink-0" />
+                            <p className="text-sm text-amber-400 font-medium">Already in cart</p>
+                          </div>
+                        )}
+                        {!alreadyInCart && isSold && (
+                          <div className="px-4 py-2.5 bg-red-500/10 border-b border-red-500/20 flex items-center gap-2">
+                            <AlertCircle className="w-4 h-4 text-red-400 shrink-0" />
+                            <p className="text-sm text-red-400 font-medium">Already sold — cannot add to cart</p>
+                          </div>
+                        )}
+                        {!alreadyInCart && !isSold && isRejected && (
+                          <div className="px-4 py-2.5 bg-red-500/10 border-b border-red-500/20 flex items-center gap-2">
+                            <AlertCircle className="w-4 h-4 text-red-400 shrink-0" />
+                            <p className="text-sm text-red-400 font-medium">Rejected — cannot sell this device</p>
+                          </div>
+                        )}
+                        {!alreadyInCart && !isSold && !isRejected && isPending && (
+                          <div className={`px-4 py-2.5 border-b flex items-center gap-2 ${isOwner ? 'bg-amber-500/10 border-amber-500/20' : 'bg-red-500/10 border-red-500/20'}`}>
+                            <AlertCircle className={`w-4 h-4 shrink-0 ${isOwner ? 'text-amber-400' : 'text-red-400'}`} />
+                            <p className={`text-sm font-medium ${isOwner ? 'text-amber-400' : 'text-red-400'}`}>
+                              {isOwner ? 'Pending approval — you can still sell as owner' : 'Awaiting owner approval — cannot sell'}
+                            </p>
+                          </div>
+                        )}
+                        {!alreadyInCart && !isSold && !isRejected && !isPending && (
+                          <div className="px-4 py-2.5 bg-green-500/10 border-b border-green-500/20 flex items-center gap-2">
+                            <CheckCircle2 className="w-4 h-4 text-green-400 shrink-0" />
+                            <p className="text-sm text-green-400 font-medium">In stock — ready to sell</p>
+                          </div>
+                        )}
+
+                        {/* Device details */}
+                        <div className="p-4 space-y-4">
+                          <div className="flex items-start gap-3">
+                            <Smartphone className="w-8 h-8 text-muted-foreground shrink-0 mt-0.5" />
+                            <div className="flex-1 min-w-0">
+                              <p className="font-semibold">{[p.brand, p.model].filter(Boolean).join(' ')}</p>
+                              <p className="text-sm text-muted-foreground">{[p.variant, p.color].filter(Boolean).join(' · ') || '—'}</p>
+                              <div className="flex items-center gap-2 mt-1.5 flex-wrap">
+                                <span className={cn('text-xs px-2 py-0.5 rounded-full border font-medium', sourceBadge)}>{sourceLabel}</span>
+                                <span className="font-mono text-xs text-muted-foreground">{scannedDevice.imei_number}</span>
+                              </div>
+                            </div>
+                            <div className="text-right shrink-0">
+                              <p className="text-xs text-muted-foreground">Purchase</p>
+                              <p className="font-medium text-sm">{fmt(scannedDevice.purchase_price)}</p>
+                            </div>
+                          </div>
+
+                          <div className="grid grid-cols-2 gap-3">
+                            <div className="space-y-1.5">
+                              <Label>Selling Price <span className="text-red-400">*</span></Label>
+                              <Input
+                                type="number" min={0} step="0.01"
+                                value={scanSellPrice}
+                                onChange={e => setScanSellPrice(e.target.value)}
+                                placeholder="0.00"
+                                disabled={!canAdd}
+                              />
+                            </div>
+                            <div className="space-y-1.5">
+                              <Label>Discount <span className="text-xs text-muted-foreground">(optional)</span></Label>
+                              <Input
+                                type="number" min={0} step="0.01"
+                                value={scanDiscount}
+                                onChange={e => setScanDiscount(e.target.value)}
+                                placeholder="0.00"
+                                disabled={!canAdd}
+                              />
+                            </div>
+                          </div>
+
+                          <Button
+                            type="button"
+                            onClick={handleAddScannedToCart}
+                            disabled={!canAdd}
+                            className="w-full bg-indigo-500 hover:bg-indigo-600 text-white"
+                          >
+                            <Plus className="w-4 h-4 mr-2" />Add to Cart
+                          </Button>
+                        </div>
+                      </div>
+                    )
+                  })()
+                )}
+              </CardContent>
+            </Card>
+          )}
+
+          {/* ── Tab B: Search by Name ── */}
+          {activeTab === 'search' && (
+            <Card>
+              <CardContent className="pt-5 space-y-4">
+                <div className="space-y-1.5">
+                  <Label>Search Product</Label>
+                  <ProductSearchDropdown
+                    value={productSearch}
+                    onChange={setProductSearch}
+                    placeholder="Brand, model, variant…"
+                    items={filteredInventory}
+                    onClear={() => { setProductSearch(''); setSelectedInv(null) }}
+                    renderItem={(inv) => (
+                      <div>
+                        <span className="font-medium">
+                          {[inv.products?.brand, inv.products?.model, inv.products?.variant, inv.products?.color].filter(Boolean).join(' ')}
+                        </span>
+                        <span className={cn('ml-2 text-xs', inv.quantity_remaining <= 5 ? 'text-amber-400' : 'text-emerald-400')}>
+                          {inv.quantity_remaining} left
+                        </span>
+                        <span className="ml-2 text-xs text-muted-foreground">· Sell: {fmt(inv.selling_price)}</span>
+                      </div>
+                    )}
+                    onSelect={handleSelectProduct}
+                  />
+                </div>
+
+                {selectedInv && (
+                  <>
+                    {isSmartphone ? (
+                      <div className="space-y-1.5">
+                        <Label>IMEI Number <span className="text-red-400">*</span></Label>
+                        <Input
+                          value={imeiNumber}
+                          onChange={(e) => setImeiNumber(e.target.value)}
+                          placeholder="15-digit IMEI number"
+                          maxLength={15}
+                        />
+                      </div>
+                    ) : (
+                      <div className="space-y-1.5">
+                        <Label>Quantity <span className="text-xs text-muted-foreground">(max {selectedInv.quantity_remaining})</span></Label>
+                        <Input
+                          type="number" min={1} max={selectedInv.quantity_remaining}
+                          value={qty} onChange={(e) => setQty(e.target.value)}
+                          className="w-32"
+                        />
+                      </div>
+                    )}
+
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-1.5">
+                        <Label>Unit Price <span className="text-red-400">*</span></Label>
+                        <Input type="number" min={0} step="0.01" value={unitPrice} onChange={(e) => setUnitPrice(e.target.value)} placeholder="0.00" />
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label>Discount <span className="text-xs text-muted-foreground">(optional)</span></Label>
+                        <Input type="number" min={0} step="0.01" value={lineDiscount} onChange={(e) => setLineDiscount(e.target.value)} placeholder="0.00" />
+                      </div>
+                    </div>
+
+                    <Button type="button" onClick={handleAddToCart} className="w-full bg-indigo-500 hover:bg-indigo-600 text-white">
+                      <Plus className="w-4 h-4 mr-2" />Add to Cart
+                    </Button>
+                  </>
+                )}
+              </CardContent>
+            </Card>
+          )}
 
           {/* Cart */}
           <Card>
@@ -907,6 +1144,12 @@ export default function NewSale() {
           )}
         </div>
       </div>
+
+      <BarcodeScanner
+        open={scannerOpen}
+        onClose={() => setScannerOpen(false)}
+        onScan={handleScanResult}
+      />
     </motion.div>
   )
 }

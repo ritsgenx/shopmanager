@@ -184,7 +184,11 @@ export async function deleteInventory(tenantId, id) {
 export async function getProductByImei(tenantId, imei) {
   const { data, error } = await supabase
     .from('inventory')
-    .select('product_id')
+    .select(`
+      id, imei_number, purchase_price, selling_price, status,
+      approval_status, stock_source, purchase_id, product_id,
+      products ( brand, model, variant, color, category, gst_rate, hsn_code )
+    `)
     .eq('tenant_id', tenantId)
     .eq('imei_number', imei)
     .limit(1)
