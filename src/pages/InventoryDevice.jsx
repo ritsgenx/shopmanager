@@ -3,11 +3,12 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import {
   ArrowLeft, Plus, Search, Pencil, Trash2, AlertCircle, Loader2,
-  Smartphone, X, ChevronRight, CheckCircle,
+  Smartphone, X, ChevronRight, CheckCircle, ReceiptText,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { useAuth } from '@/context/AuthContext'
 import { getInventoryForModel, deleteInventory, approveInventory } from '@/lib/inventory'
+import { getPurchaseById } from '@/lib/purchases'
 import { getProducts } from '@/lib/products'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -36,11 +37,14 @@ function SourceBadge({ source }) {
 
 function ApprovalBadge({ status }) {
   if (status === 'pending')
-    return <Badge className="bg-yellow-500/20 text-yellow-400 border-yellow-500/30 hover:bg-yellow-500/20">Pending Approval</Badge>
+    return <Badge className="bg-blue-500/20 text-blue-400 border-blue-500/30 hover:bg-blue-500/20">Pending Approval</Badge>
+  if (status === 'rejected')
+    return <Badge className="bg-red-500/20 text-red-400 border-red-500/30 hover:bg-red-500/20">Rejected</Badge>
   return <Badge className="bg-green-500/20 text-green-400 border-green-500/30 hover:bg-green-500/20">Approved</Badge>
 }
 
 const fmt = (n) => `₹${Number(n).toLocaleString('en-IN')}`
+const fmtDate = (s) => s ? new Date(s).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '—'
 
 export default function InventoryDevice() {
   const { brand: brandParam, model: modelParam } = useParams()
@@ -60,6 +64,7 @@ export default function InventoryDevice() {
   const [approvingId, setApprovingId] = useState(null)
   const [products, setProducts] = useState([])
   const [addOpen, setAddOpen] = useState(false)
+  const [poDetail, setPoDetail] = useState({ open: false, loading: false, data: null })
 
   const fetchDevices = async () => {
     if (!tenantId) return
@@ -116,6 +121,18 @@ export default function InventoryDevice() {
       toast.success('Device approved')
       fetchDevices()
     }
+  }
+
+  const openPoDetail = async (device) => {
+    if (!device.purchase_id) return
+    setPoDetail({ open: true, loading: true, data: null })
+    const { data, error } = await getPurchaseById(tenantId, device.purchase_id)
+    if (error) {
+      toast.error('Failed to load purchase')
+      setPoDetail(p => ({ ...p, loading: false }))
+      return
+    }
+    setPoDetail({ open: true, loading: false, data })
   }
 
   const goBack = () => navigate('/inventory', { state: { restoreBrand: brand } })
@@ -194,7 +211,7 @@ export default function InventoryDevice() {
               <th className="px-4 py-3 text-left font-medium">Variant</th>
               <th className="px-4 py-3 text-left font-medium">Color</th>
               <th className="px-4 py-3 text-right font-medium">Purchase</th>
-              <th className="px-4 py-3 text-right font-medium">Selling</th>
+              <th className="px-4 py-3 text-left font-medium">PO Ref</th>
               <th className="px-4 py-3 text-center font-medium">Source</th>
               <th className="px-4 py-3 text-center font-medium">Status</th>
               <th className="px-4 py-3 text-center font-medium">Approval</th>
@@ -225,7 +242,7 @@ export default function InventoryDevice() {
                 const isApproving = approvingId === device.id
                 return (
                   <tr key={device.id}
-                    className={`hover:bg-muted/20 transition-colors ${isPending ? 'border-l-2 border-yellow-400/60' : ''}`}>
+                    className={`hover:bg-muted/20 transition-colors ${isPending ? 'border-l-2 border-blue-400/60' : ''}`}>
                     <td className="px-4 py-3 font-mono text-sm tracking-wider">
                       {device.imei_number
                         ? device.imei_number
@@ -234,7 +251,15 @@ export default function InventoryDevice() {
                     <td className="px-4 py-3 text-muted-foreground">{device.products?.variant ?? '—'}</td>
                     <td className="px-4 py-3 text-muted-foreground">{device.products?.color ?? '—'}</td>
                     <td className="px-4 py-3 text-right font-medium">{fmt(device.purchase_price)}</td>
-                    <td className="px-4 py-3 text-right text-muted-foreground">{fmt(device.selling_price)}</td>
+                    <td className="px-4 py-3">
+                      {device.purchases?.bill_number
+                        ? <button onClick={() => openPoDetail(device)}
+                            className="font-mono text-xs text-indigo-400 hover:text-indigo-300 hover:underline transition-colors">
+                            {device.purchases.bill_number}
+                          </button>
+                        : <span className="text-muted-foreground text-xs">—</span>
+                      }
+                    </td>
                     <td className="px-4 py-3 text-center"><SourceBadge source={device.stock_source} /></td>
                     <td className="px-4 py-3 text-center"><StatusBadge qty={device.quantity_remaining ?? 0} /></td>
                     <td className="px-4 py-3 text-center"><ApprovalBadge status={device.approval_status ?? 'approved'} /></td>
@@ -289,10 +314,10 @@ export default function InventoryDevice() {
             const isPending = device.approval_status === 'pending'
             const isApproving = approvingId === device.id
             return (
-              <Card key={device.id} className={`border-border ${isPending ? 'border-l-2 border-yellow-400/60' : ''}`}>
+              <Card key={device.id} className={`border-border ${isPending ? 'border-l-2 border-blue-400/60' : ''}`}>
                 <CardContent className="p-4">
                   {isPending && (
-                    <div className="flex items-center gap-1.5 mb-3 px-2 py-1.5 rounded-lg bg-yellow-500/10 border border-yellow-500/20">
+                    <div className="flex items-center gap-1.5 mb-3 px-2 py-1.5 rounded-lg bg-blue-500/10 border border-blue-500/20">
                       <ApprovalBadge status="pending" />
                       {isOwner && (
                         <Button variant="ghost" size="sm" className="ml-auto h-6 text-xs text-green-400 hover:text-green-300 hover:bg-green-500/10 px-2"
@@ -329,8 +354,14 @@ export default function InventoryDevice() {
                       <p className="font-semibold">{fmt(device.purchase_price)}</p>
                     </div>
                     <div>
-                      <p className="text-xs text-muted-foreground mb-0.5">Selling</p>
-                      <p className="font-medium">{fmt(device.selling_price)}</p>
+                      <p className="text-xs text-muted-foreground mb-0.5">PO Ref</p>
+                      {device.purchases?.bill_number
+                        ? <button onClick={() => openPoDetail(device)}
+                            className="font-mono text-xs text-indigo-400 hover:text-indigo-300 transition-colors">
+                            {device.purchases.bill_number}
+                          </button>
+                        : <p className="text-xs text-muted-foreground">—</p>
+                      }
                     </div>
                   </div>
 
@@ -365,6 +396,100 @@ export default function InventoryDevice() {
         item={editItem}
         onSuccess={() => { setEditItem(null); fetchDevices() }}
       />
+
+      {/* Purchase Detail Dialog */}
+      <Dialog open={poDetail.open} onOpenChange={(o) => { if (!o) setPoDetail(p => ({ ...p, open: false })) }}>
+        <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto" onInteractOutside={(e) => e.preventDefault()}>
+          <DialogHeader className="border-b border-border">
+            <DialogTitle className="flex items-center gap-2">
+              <ReceiptText className="w-4 h-4 text-indigo-400" />
+              Purchase Details
+              {poDetail.data && (
+                <span className={`ml-1 text-xs px-2 py-0.5 rounded-full border font-normal
+                  ${poDetail.data.purchase_type === 'official'
+                    ? 'bg-blue-500/15 text-blue-400 border-blue-500/25'
+                    : 'bg-slate-500/15 text-slate-400 border-slate-500/25'}`}>
+                  {poDetail.data.purchase_type === 'official' ? 'Official' : 'Unofficial'}
+                </span>
+              )}
+            </DialogTitle>
+          </DialogHeader>
+
+          {poDetail.loading ? (
+            <div className="flex items-center justify-center py-12 px-6">
+              <Loader2 className="w-6 h-6 animate-spin text-indigo-400" />
+            </div>
+          ) : poDetail.data && (
+            <div className="px-6 py-5 space-y-5">
+              <div className="grid grid-cols-2 gap-x-6 gap-y-3 text-sm">
+                <div>
+                  <p className="text-xs text-muted-foreground mb-0.5">Supplier</p>
+                  <p className="font-medium">{poDetail.data.supplier_name}</p>
+                </div>
+                {poDetail.data.supplier_phone && (
+                  <div>
+                    <p className="text-xs text-muted-foreground mb-0.5">Phone</p>
+                    <p>{poDetail.data.supplier_phone}</p>
+                  </div>
+                )}
+                {poDetail.data.bill_number && (
+                  <div>
+                    <p className="text-xs text-muted-foreground mb-0.5">Reference No.</p>
+                    <p className="font-mono text-sm">{poDetail.data.bill_number}</p>
+                  </div>
+                )}
+                <div>
+                  <p className="text-xs text-muted-foreground mb-0.5">Date</p>
+                  <p>{fmtDate(poDetail.data.created_at)}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground mb-0.5">Payment</p>
+                  <p className="capitalize">{(poDetail.data.payment_method ?? '').replace(/_/g, ' ')}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground mb-0.5">Grand Total</p>
+                  <p className="font-bold">{fmt(poDetail.data.grand_total)}</p>
+                </div>
+              </div>
+
+              <div>
+                <p className="text-xs text-muted-foreground uppercase tracking-wider mb-2">Items</p>
+                <div className="rounded-lg border border-border overflow-hidden">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="bg-muted/40 text-muted-foreground text-xs border-b border-border">
+                        <th className="px-3 py-2 text-left font-medium">Product</th>
+                        <th className="px-3 py-2 text-right font-medium">Qty</th>
+                        <th className="px-3 py-2 text-right font-medium">Unit Price</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-border">
+                      {(poDetail.data.purchase_items ?? []).map((item) => {
+                        const p = item.products ?? {}
+                        const name = [p.brand, p.model, p.variant ? `(${p.variant})` : ''].filter(Boolean).join(' ')
+                        return (
+                          <tr key={item.id}>
+                            <td className="px-3 py-2">
+                              <p className="font-medium">{name}</p>
+                              {p.color && <p className="text-xs text-muted-foreground">{p.color}</p>}
+                            </td>
+                            <td className="px-3 py-2 text-right">{item.quantity}</td>
+                            <td className="px-3 py-2 text-right">{fmt(item.unit_price)}</td>
+                          </tr>
+                        )
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          )}
+
+          <DialogFooter className="border-t border-border">
+            <Button variant="outline" onClick={() => setPoDetail(p => ({ ...p, open: false }))}>Close</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={!!deleteItem} onOpenChange={(open) => { if (!open) setDeleteItem(null) }}>
         <DialogContent className="max-w-sm" onInteractOutside={(e) => e.preventDefault()}>

@@ -62,6 +62,7 @@ export async function createPurchase(headerData, lineItems, tenantId, approvalMe
     const { error: invError } = await createInventory({
       tenant_id: tenantId,
       product_id: item.product_id,
+      purchase_id: purchase.id,
       purchase_price: item.unit_price,
       selling_price: item.unit_price, // default — user can update in Inventory module
       quantity: item.quantity,

@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react'
 import { Outlet, useLocation, useNavigationType } from 'react-router-dom'
 import Sidebar from './Sidebar'
 import Navbar from './Navbar'
+import { PendingCountProvider } from '@/context/PendingCountContext'
 
 export default function AppLayout() {
   const [mobileOpen, setMobileOpen] = useState(false)
@@ -45,6 +46,7 @@ export default function AppLayout() {
   }, [location.pathname])
 
   return (
+    <PendingCountProvider>
     <div className="flex h-screen bg-background overflow-hidden">
       {/* Mobile backdrop — tapping it closes the sidebar */}
       {mobileOpen && (
@@ -61,5 +63,6 @@ export default function AppLayout() {
         </main>
       </div>
     </div>
+    </PendingCountProvider>
   )
 }

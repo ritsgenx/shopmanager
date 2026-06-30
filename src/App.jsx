@@ -22,6 +22,7 @@ import Commissions from '@/pages/Commissions'
 import CustomerDetail from '@/pages/CustomerDetail'
 import SuperAdmin from '@/pages/SuperAdmin'
 import AuthCallback from '@/pages/AuthCallback'
+import PendingApprovals from '@/pages/PendingApprovals'
 
 function RootRedirect() {
   const { currentUser, isLoading } = useAuth()
@@ -60,6 +61,7 @@ export default function App() {
             <Route path="/settings" element={<Settings />} />
             <Route path="/purchases" element={<Purchases />} />
             <Route path="/purchases/new" element={<NewPurchase />} />
+            <Route path="/pending-approvals" element={<PendingApprovals />} />
             <Route path="/commissions" element={<Commissions />} />
           </Route>
         </Route>

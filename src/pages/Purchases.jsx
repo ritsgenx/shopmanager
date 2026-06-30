@@ -1,12 +1,13 @@
 ﻿import React, { useState, useEffect } from 'react'
 import { useNavigate, Navigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
-import { Plus, ReceiptText, AlertCircle, Loader2, Trash2 } from 'lucide-react'
+import { Plus, ReceiptText, AlertCircle, Loader2, Trash2, Printer, Smartphone } from 'lucide-react'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
 import { useAuth } from '@/context/AuthContext'
 import { usePermissions } from '@/lib/permissions'
 import { getPurchases, getPurchaseById, deletePurchase } from '@/lib/purchases'
+import { getImeisByPurchase } from '@/lib/inventory'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -67,6 +68,9 @@ export default function Purchases() {
   const [deleteItem, setDeleteItem] = useState(null)
   const [deleting, setDeleting] = useState(false)
 
+  // IMEI dialog state
+  const [imeiDialog, setImeiDialog] = useState({ open: false, loading: false, items: [], productName: '', purchase: null })
+
   const fetchPurchases = async () => {
     if (!tenantId) return
     setLoading(true)
@@ -103,6 +107,52 @@ export default function Purchases() {
       setPurchases((prev) => prev.filter((p) => p.id !== deleteItem.id))
       setDeleteItem(null)
     }
+  }
+
+  const openImeiDialog = async (lineItem) => {
+    const p = lineItem.products ?? {}
+    const productName = [p.brand, p.model, p.variant && `(${p.variant})`, p.color].filter(Boolean).join(' ')
+    setImeiDialog({ open: true, loading: true, items: [], productName, purchase: detailData })
+    const { data, error } = await getImeisByPurchase(tenantId, detailData.id, lineItem.product_id)
+    if (error) { toast.error('Failed to load IMEIs'); setImeiDialog(d => ({ ...d, loading: false })); return }
+    setImeiDialog(d => ({ ...d, loading: false, items: data }))
+  }
+
+  const printImeis = () => {
+    const { items, productName, purchase } = imeiDialog
+    const win = window.open('', '_blank')
+    win.document.write(`
+      <html><head><title>IMEI List</title>
+      <style>
+        body { font-family: Arial, sans-serif; padding: 24px; color: #111; }
+        h2 { font-size: 18px; margin: 0 0 4px; }
+        .meta { color: #555; font-size: 12px; margin: 2px 0; }
+        .divider { border: none; border-top: 1px solid #ddd; margin: 14px 0; }
+        table { width: 100%; border-collapse: collapse; margin-top: 12px; font-size: 13px; }
+        th { background: #f4f4f4; font-weight: 600; text-align: left; padding: 8px 10px; border: 1px solid #ddd; }
+        td { padding: 7px 10px; border: 1px solid #ddd; }
+        td.mono { font-family: monospace; font-size: 13px; }
+        .footer { margin-top: 16px; font-size: 11px; color: #888; }
+      </style></head><body>
+      <h2>IMEI List — ${productName}</h2>
+      <p class="meta">Purchase: ${purchase?.bill_number ?? '—'} &nbsp;·&nbsp; Date: ${fmtDate(purchase?.created_at)}</p>
+      <p class="meta">Supplier: ${purchase?.supplier_name ?? '—'}</p>
+      <hr class="divider"/>
+      <table>
+        <thead><tr><th>#</th><th>IMEI Number</th><th>Status</th></tr></thead>
+        <tbody>
+          ${items.map((item, i) => `
+            <tr>
+              <td>${i + 1}</td>
+              <td class="mono">${item.imei_number ?? '—'}</td>
+              <td>${item.status === 'sold' ? 'Sold' : item.approval_status === 'pending' ? 'Pending Approval' : 'In Stock'}</td>
+            </tr>`).join('')}
+        </tbody>
+      </table>
+      <p class="footer">Total: ${items.length} unit${items.length !== 1 ? 's' : ''}</p>
+      </body></html>`)
+    win.document.close()
+    win.print()
   }
 
   const isOfficial = detailData?.purchase_type === 'official'
@@ -342,6 +392,13 @@ export default function Purchases() {
                             <td className="px-3 py-2">
                               <p className="font-medium">{name}</p>
                               {p.color && <p className="text-xs text-slate-400">{p.color}</p>}
+                              <button
+                                className="flex items-center gap-1 text-xs text-indigo-400 hover:text-indigo-300 mt-1 transition-colors"
+                                onClick={() => openImeiDialog(item)}
+                              >
+                                <Smartphone className="w-3 h-3" />
+                                View IMEIs
+                              </button>
                             </td>
                             <td className="px-3 py-2 text-right">{item.quantity}</td>
                             <td className="px-3 py-2 text-right">{fmt(item.unit_price)}</td>
@@ -386,6 +443,73 @@ export default function Purchases() {
               </div>
             </>
           )}
+        </DialogContent>
+      </Dialog>
+
+      {/* IMEI List Dialog */}
+      <Dialog open={imeiDialog.open} onOpenChange={(o) => { if (!o) setImeiDialog(d => ({ ...d, open: false })) }}>
+        <DialogContent className="bg-slate-800 border-slate-700 text-white max-w-lg max-h-[85vh] flex flex-col" onInteractOutside={(e) => e.preventDefault()}>
+          <DialogHeader className="border-b border-slate-700">
+            <DialogTitle className="text-white flex items-center gap-2">
+              <Smartphone className="w-4 h-4 text-indigo-400" />
+              IMEI List
+            </DialogTitle>
+            <p className="text-sm text-slate-400 truncate">{imeiDialog.productName}</p>
+          </DialogHeader>
+
+          <div className="flex-1 overflow-y-auto px-6 py-4">
+            {imeiDialog.loading ? (
+              <div className="flex items-center justify-center py-12">
+                <Loader2 className="w-6 h-6 animate-spin text-indigo-400" />
+              </div>
+            ) : imeiDialog.items.length === 0 ? (
+              <p className="text-center text-slate-400 py-12 text-sm">No IMEI records found for this purchase.</p>
+            ) : (
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="text-slate-400 text-xs uppercase tracking-wider border-b border-slate-700">
+                    <th className="pb-2 text-left w-8">#</th>
+                    <th className="pb-2 text-left">IMEI Number</th>
+                    <th className="pb-2 text-right">Status</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-700/50">
+                  {imeiDialog.items.map((item, i) => {
+                    const isSold    = item.status === 'sold'
+                    const isPending = item.approval_status === 'pending'
+                    return (
+                      <tr key={i} className="text-sm">
+                        <td className="py-2 text-slate-500 text-xs">{i + 1}</td>
+                        <td className="py-2 font-mono tracking-wide">{item.imei_number ?? '—'}</td>
+                        <td className="py-2 text-right">
+                          {isSold
+                            ? <span className="text-xs text-red-400">Sold</span>
+                            : isPending
+                              ? <span className="text-xs text-blue-400">Pending</span>
+                              : <span className="text-xs text-emerald-400">In Stock</span>
+                          }
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            )}
+          </div>
+
+          <DialogFooter className="border-t border-slate-700">
+            <span className="text-xs text-slate-400 mr-auto">
+              {imeiDialog.items.length} unit{imeiDialog.items.length !== 1 ? 's' : ''}
+            </span>
+            <Button variant="outline" onClick={() => setImeiDialog(d => ({ ...d, open: false }))}
+              className="border-slate-600 text-slate-300 hover:bg-slate-700">
+              Close
+            </Button>
+            <Button onClick={printImeis} disabled={imeiDialog.loading || imeiDialog.items.length === 0}
+              className="bg-indigo-500 hover:bg-indigo-600 text-white">
+              <Printer className="w-4 h-4 mr-2" /> Print
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
 

@@ -99,7 +99,7 @@ export default function BarcodeScanner({ open, onClose, onScan }) {
           </DialogTitle>
         </DialogHeader>
 
-        <p className="text-sm text-slate-400 -mt-2">
+        <p className="text-sm text-slate-400 mt-1 pr-8">
           Point your camera at the barcode on the phone box. The IMEI will fill in automatically.
         </p>
 

@@ -83,9 +83,9 @@ function BrandCard({ b, onClick }) {
             </div>
           )}
           {b.pendingCount > 0 && (
-            <div className="flex items-center gap-1.5 mt-1.5 px-2 py-1 rounded-md bg-yellow-500/10 border border-yellow-500/20">
-              <span className="w-1.5 h-1.5 rounded-full bg-yellow-400 shrink-0" />
-              <span className="text-xs text-yellow-400 font-medium">{b.pendingCount} pending approval</span>
+            <div className="flex items-center gap-1.5 mt-1.5 px-2 py-1 rounded-md bg-blue-500/10 border border-blue-500/20">
+              <span className="w-1.5 h-1.5 rounded-full bg-blue-400 shrink-0" />
+              <span className="text-xs text-blue-400 font-medium">{b.pendingCount} pending approval</span>
             </div>
           )}
         </div>
@@ -297,14 +297,14 @@ export default function Inventory() {
                   filteredModels.map(group => (
                     <tr
                       key={group.model}
-                      className={`cursor-pointer border-l-2 hover:bg-muted/20 transition-colors ${group.pendingCount > 0 ? 'border-l-yellow-400/60' : 'border-l-transparent hover:border-l-indigo-500'}`}
+                      className={`cursor-pointer border-l-2 hover:bg-muted/20 transition-colors ${group.pendingCount > 0 ? 'border-l-blue-400/60' : 'border-l-transparent hover:border-l-indigo-500'}`}
                       onClick={() => handleModelClick(group)}
                     >
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-2 flex-wrap">
                           <p className="font-medium">{group.model}</p>
                           {group.pendingCount > 0 && (
-                            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-yellow-500/15 text-yellow-400 border border-yellow-500/25">
+                            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-blue-500/15 text-blue-400 border border-blue-500/25">
                               {group.pendingCount} pending
                             </span>
                           )}
@@ -367,14 +367,14 @@ export default function Inventory() {
               filteredModels.map(group => (
                 <Card
                   key={group.model}
-                  className={`border-l-2 cursor-pointer transition-colors ${group.pendingCount > 0 ? 'border-border border-l-yellow-400/60' : 'border-border border-l-transparent hover:border-l-indigo-500'}`}
+                  className={`border-l-2 cursor-pointer transition-colors ${group.pendingCount > 0 ? 'border-border border-l-blue-400/60' : 'border-border border-l-transparent hover:border-l-indigo-500'}`}
                   onClick={() => handleModelClick(group)}
                 >
                   <CardContent className="p-4">
                     {group.pendingCount > 0 && (
-                      <div className="flex items-center gap-1.5 mb-3 px-2 py-1 rounded-md bg-yellow-500/10 border border-yellow-500/20">
-                        <span className="w-1.5 h-1.5 rounded-full bg-yellow-400 shrink-0" />
-                        <span className="text-xs text-yellow-400 font-medium">{group.pendingCount} pending approval</span>
+                      <div className="flex items-center gap-1.5 mb-3 px-2 py-1 rounded-md bg-blue-500/10 border border-blue-500/20">
+                        <span className="w-1.5 h-1.5 rounded-full bg-blue-400 shrink-0" />
+                        <span className="text-xs text-blue-400 font-medium">{group.pendingCount} pending approval</span>
                       </div>
                     )}
                     <div className="flex items-start justify-between gap-2 mb-3">

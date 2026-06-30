@@ -5,26 +5,29 @@ import {
   LayoutDashboard, Package, ShoppingCart, Users, UserCheck,
   CalendarCheck, BarChart3, Settings, LogOut, ChevronLeft,
   ChevronRight, Store, ShoppingBag, Wallet, KeyRound, ShieldCheck, X,
+  ClipboardList,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useAuth } from '@/context/AuthContext'
 import { usePermissions } from '@/lib/permissions'
+import { usePendingCount } from '@/context/PendingCountContext'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { Separator } from '@/components/ui/separator'
 import { toast } from 'sonner'
 import ChangePasswordDialog from '@/components/shared/ChangePasswordDialog'
 
 const navItems = [
-  { to: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
-  { to: '/inventory', icon: Package, label: 'Inventory' },
-  { to: '/purchases', icon: ShoppingBag, label: 'Purchases', permKey: 'can_access_purchases' },
-  { to: '/sales', icon: ShoppingCart, label: 'Sales' },
-  { to: '/customers', icon: Users, label: 'Customers' },
-  { to: '/employees', icon: UserCheck, label: 'Employees' },
-  { to: '/attendance', icon: CalendarCheck, label: 'Attendance' },
-  { to: '/commissions', icon: Wallet, label: 'Commissions' },
-  { to: '/reports', icon: BarChart3, label: 'Reports' },
-  { to: '/settings', icon: Settings, label: 'Settings' },
+  { to: '/dashboard',          icon: LayoutDashboard, label: 'Dashboard' },
+  { to: '/inventory',          icon: Package,         label: 'Inventory' },
+  { to: '/pending-approvals',  icon: ClipboardList,   label: 'Pending Approvals', adminOnly: true, showBadge: true },
+  { to: '/purchases',          icon: ShoppingBag,     label: 'Purchases', permKey: 'can_access_purchases' },
+  { to: '/sales',              icon: ShoppingCart,    label: 'Sales' },
+  { to: '/customers',          icon: Users,           label: 'Customers' },
+  { to: '/employees',          icon: UserCheck,       label: 'Employees' },
+  { to: '/attendance',         icon: CalendarCheck,   label: 'Attendance' },
+  { to: '/commissions',        icon: Wallet,          label: 'Commissions' },
+  { to: '/reports',            icon: BarChart3,       label: 'Reports' },
+  { to: '/settings',           icon: Settings,        label: 'Settings' },
 ]
 
 const superAdminNav = [
@@ -37,7 +40,9 @@ export default function Sidebar({ mobileOpen, onClose }) {
   const navigate = useNavigate()
 
   const { can } = usePermissions()
+  const { pendingCount } = usePendingCount()
   const isSuperAdmin = currentUser?.role === 'super_admin'
+  const isOwner = currentUser?.role === 'admin'
   const shopName = isSuperAdmin ? 'Platform Admin' : (currentTenant?.shop_name ?? 'MobileShop')
   const shopSubtitle = isSuperAdmin ? 'SaaS Administration' : 'Management System'
   const userName = currentUser?.full_name ?? currentUser?.email ?? 'User'
@@ -113,7 +118,8 @@ export default function Sidebar({ mobileOpen, onClose }) {
         <ul className="space-y-1 px-2">
           {activeNav
             .filter(item => !item.permKey || can(item.permKey))
-            .map(({ to, icon: Icon, label }) => (
+            .filter(item => !item.adminOnly || isOwner)
+            .map(({ to, icon: Icon, label, showBadge }) => (
               <li key={to}>
                 <NavLink
                   to={to}
@@ -141,6 +147,11 @@ export default function Sidebar({ mobileOpen, onClose }) {
                       </motion.span>
                     )}
                   </AnimatePresence>
+                  {showBadge && !collapsed && pendingCount > 0 && (
+                    <span className="ml-auto min-w-[18px] h-[18px] rounded-full bg-yellow-500 text-black text-[10px] font-bold flex items-center justify-center px-1 leading-none">
+                      {pendingCount > 99 ? '99+' : pendingCount}
+                    </span>
+                  )}
                 </NavLink>
               </li>
             ))}
