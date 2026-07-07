@@ -4,6 +4,7 @@ import { Loader2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
 import { createProduct } from '@/lib/products'
+import { useAuth } from '@/context/AuthContext'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -16,6 +17,7 @@ import {
 import ProductPicker from '@/components/ProductPicker'
 
 export default function LineItemDialog({ open, onOpenChange, tenantId, products, onAdd }) {
+  const { currentUser } = useAuth()
   const [mode, setMode] = useState('existing')
 
   const formA = useForm({ defaultValues: { product_id: '' } })
@@ -56,6 +58,7 @@ export default function LineItemDialog({ open, onOpenChange, tenantId, products,
       color: values.color || null,
       hsn_code: values.hsn_code || null,
       gst_rate: Number(values.gst_rate),
+      created_by: currentUser?.id,
     })
     if (error) {
       if (error.code === '23505') {
@@ -110,7 +113,7 @@ export default function LineItemDialog({ open, onOpenChange, tenantId, products,
                 rules={{ required: 'Please select a product' }}
                 render={({ field, fieldState }) => (
                   <ProductPicker
-                    products={products}
+                    products={products.filter((p) => p.is_active !== false)}
                     value={field.value}
                     onChange={field.onChange}
                     tenantId={tenantId}

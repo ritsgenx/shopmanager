@@ -5,7 +5,7 @@ import {
   LayoutDashboard, Package, ShoppingCart, Users, UserCheck,
   CalendarCheck, BarChart3, Settings, LogOut, ChevronLeft,
   ChevronRight, Store, ShoppingBag, Wallet, KeyRound, ShieldCheck, X,
-  ClipboardList, Search,
+  ClipboardList, Search, IndianRupee, Smartphone,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useAuth } from '@/context/AuthContext'
@@ -20,6 +20,8 @@ const navItems = [
   { to: '/dashboard',          icon: LayoutDashboard, label: 'Dashboard' },
   { to: '/search',             icon: Search,          label: 'Search' },
   { to: '/inventory',          icon: Package,         label: 'Inventory' },
+  { to: '/models',             icon: Smartphone,      label: 'Models' },
+  { to: '/prices',             icon: IndianRupee,     label: 'Price Editor' },
   { to: '/pending-approvals',  icon: ClipboardList,   label: 'Pending Approvals', adminOnly: true, showBadge: true },
   { to: '/purchases',          icon: ShoppingBag,     label: 'Purchases', permKey: 'can_access_purchases' },
   { to: '/sales',              icon: ShoppingCart,    label: 'Sales' },

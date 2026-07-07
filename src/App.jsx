@@ -24,6 +24,8 @@ import CustomerDetail from '@/pages/CustomerDetail'
 import SuperAdmin from '@/pages/SuperAdmin'
 import AuthCallback from '@/pages/AuthCallback'
 import PendingApprovals from '@/pages/PendingApprovals'
+import PriceEditor from '@/pages/PriceEditor'
+import Models from '@/pages/Models'
 
 function RootRedirect() {
   const { currentUser, isLoading } = useAuth()
@@ -65,6 +67,8 @@ export default function App() {
             <Route path="/purchases/new" element={<NewPurchase />} />
             <Route path="/pending-approvals" element={<PendingApprovals />} />
             <Route path="/commissions" element={<Commissions />} />
+            <Route path="/prices" element={<PriceEditor />} />
+            <Route path="/models" element={<Models />} />
           </Route>
         </Route>
 

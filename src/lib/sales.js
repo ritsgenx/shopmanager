@@ -1,4 +1,5 @@
 import { supabase } from './supabase'
+import { getCurrentPriceFor } from './modelPrices'
 
 // India financial year: April–March
 function getFinancialYear() {
@@ -115,8 +116,38 @@ export async function createSale(headerData, lineItems, { customer, tenant }) {
     (tenant.state || '').trim().toLowerCase()
   const saleType = customer.gstin ? 'b2b' : 'b2c'
 
+  // 2b. Resolve the per-unit cost basis, frozen onto each sale item.
+  // Official units: the model's CURRENT Finance or O/C price (looked up now,
+  // at sale time — later price changes must never rewrite this sale's profit).
+  // Any finance involvement (full or partial) always means the Finance price.
+  // Unofficial/manual units: the unit's own purchase price.
+  const financeInvolved = !!headerData.finance_involved
+  const costedItems = []
+  for (const item of lineItems) {
+    if (item.stock_source === 'official') {
+      const p = item.products ?? {}
+      const { data: price } = await getCurrentPriceFor(tenantId, p.brand, p.model, p.variant)
+      const basis = financeInvolved ? price?.finance_price : price?.oc_price
+      if (basis == null) {
+        const name = [p.brand, p.model, p.variant].filter(Boolean).join(' ')
+        return {
+          error: {
+            message: `Sale blocked: no current ${financeInvolved ? 'Finance' : 'O/C'} price is set for ${name}. Set it in the Price Editor first.`,
+          },
+        }
+      }
+      costedItems.push({ ...item, cost_basis: Number(basis), cost_source: financeInvolved ? 'finance' : 'oc' })
+    } else {
+      costedItems.push({
+        ...item,
+        cost_basis: item.purchase_price != null ? Number(item.purchase_price) : null,
+        cost_source: 'unit',
+      })
+    }
+  }
+
   // 3. Process line items with GST split
-  const processedItems = lineItems.map((item) => {
+  const processedItems = costedItems.map((item) => {
     const lineTotal = item.unit_price * item.quantity
     const disc = item.discount_amount || 0
     const taxable = lineTotal - disc
@@ -170,6 +201,7 @@ export async function createSale(headerData, lineItems, { customer, tenant }) {
       grand_total: grandTotal,
       payment_method: headerData.payment_method,
       payment_status: headerData.payment_status,
+      finance_involved: financeInvolved,
       upi_reference: headerData.upi_reference || null,
       notes: headerData.notes || null,
       is_return: false,
@@ -192,6 +224,8 @@ export async function createSale(headerData, lineItems, { customer, tenant }) {
         quantity: item.quantity,
         unit_price: item.unit_price,
         discount_amount: item.discount_amount || 0,
+        cost_basis: item.cost_basis,
+        cost_source: item.cost_source,
         gst_rate: item.gst_rate || 0,
         cgst_amount: item.cgst_amount,
         sgst_amount: item.sgst_amount,

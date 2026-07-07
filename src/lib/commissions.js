@@ -2,6 +2,11 @@ import { supabase } from './supabase'
 
 const COMMISSION_RATE = 0.20
 
+// Per-unit cost: the snapshot frozen onto the sale item at sale time
+// (unit purchase price, or the model's Finance/O-C price for official stock).
+// Falls back to the unit's purchase price for sales made before snapshots existed.
+const unitCost = (item) => item.cost_basis ?? item.inventory?.purchase_price ?? 0
+
 function monthRange(month) {
   const [y, m] = month.split('-').map(Number)
   const days = new Date(y, m, 0).getDate()
@@ -29,7 +34,7 @@ export async function getCommissionSummary(tenantId, month) {
       .eq('is_active', true),
     supabase
       .from('sales')
-      .select('id, employee_id, sale_items ( quantity, unit_price, discount_amount, inventory ( purchase_price ) )')
+      .select('id, employee_id, sale_items ( quantity, unit_price, discount_amount, cost_basis, inventory ( purchase_price ) )')
       .eq('tenant_id', tenantId)
       .gte('sale_date', from)
       .lte('sale_date', to)
@@ -60,7 +65,7 @@ export async function getCommissionSummary(tenantId, month) {
     for (const sale of byEmp[emp.id] ?? []) {
       salesCount++
       for (const item of sale.sale_items ?? []) {
-        const cost = (item.inventory?.purchase_price ?? 0) * item.quantity
+        const cost = unitCost(item) * item.quantity
         const revenue = item.unit_price * item.quantity - (item.discount_amount ?? 0)
         totalProfit += revenue - cost
       }
@@ -91,7 +96,7 @@ export async function getEmployeeSalesBreakdown(tenantId, employeeId, month) {
     .select(`
       id, invoice_number, sale_date, grand_total,
       sale_items (
-        id, quantity, unit_price, discount_amount,
+        id, quantity, unit_price, discount_amount, cost_basis, cost_source,
         products ( brand, model, variant, color ),
         inventory ( purchase_price )
       )
@@ -110,7 +115,7 @@ export async function getEmployeeSalesBreakdown(tenantId, employeeId, month) {
   const data = (sales ?? []).map(sale => {
     let saleProfit = 0
     const items = (sale.sale_items ?? []).map(item => {
-      const purchasePrice = item.inventory?.purchase_price ?? 0
+      const purchasePrice = unitCost(item)
       const qty = item.quantity
       const revenue = item.unit_price * qty - (item.discount_amount ?? 0)
       const cost = purchasePrice * qty
@@ -173,7 +178,7 @@ export async function getMyCommissionHistory(tenantId, userId) {
       const [{ data: sales }, { data: commRow }] = await Promise.all([
         supabase
           .from('sales')
-          .select('id, sale_items ( quantity, unit_price, discount_amount, inventory ( purchase_price ) )')
+          .select('id, sale_items ( quantity, unit_price, discount_amount, cost_basis, inventory ( purchase_price ) )')
           .eq('tenant_id', tenantId)
           .eq('employee_id', userId)
           .gte('sale_date', from)
@@ -192,7 +197,7 @@ export async function getMyCommissionHistory(tenantId, userId) {
       for (const sale of sales ?? []) {
         salesCount++
         for (const item of sale.sale_items ?? []) {
-          const cost = (item.inventory?.purchase_price ?? 0) * item.quantity
+          const cost = unitCost(item) * item.quantity
           const revenue = item.unit_price * item.quantity - (item.discount_amount ?? 0)
           totalProfit += revenue - cost
         }

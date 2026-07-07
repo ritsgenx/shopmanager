@@ -172,7 +172,7 @@ export async function getMyCommission(tenantId, employeeId) {
 
   const [{ data: sales }, { data: commRow }] = await Promise.all([
     supabase.from('sales')
-      .select('id, sale_items(quantity, unit_price, discount_amount, inventory(purchase_price))')
+      .select('id, sale_items(quantity, unit_price, discount_amount, cost_basis, inventory(purchase_price))')
       .eq('tenant_id', tenantId)
       .eq('employee_id', employeeId)
       .gte('sale_date', start)
@@ -188,7 +188,8 @@ export async function getMyCommission(tenantId, employeeId) {
   let totalProfit = 0
   for (const sale of sales ?? []) {
     for (const item of sale.sale_items ?? []) {
-      const cost = (item.inventory?.purchase_price ?? 0) * item.quantity
+      // Snapshotted cost basis; fall back to unit purchase price for pre-snapshot sales
+      const cost = (item.cost_basis ?? item.inventory?.purchase_price ?? 0) * item.quantity
       const revenue = item.unit_price * item.quantity - (item.discount_amount ?? 0)
       totalProfit += revenue - cost
     }

@@ -172,6 +172,7 @@ export default function AddStockDialog({ open, onOpenChange, tenantId, products,
       color: values.color || null,
       hsn_code: values.hsn_code || null,
       gst_rate: Number(values.gst_rate),
+      created_by: currentUser?.id,
     })
     if (productError) {
       if (productError.code === '23505') {
@@ -244,7 +245,7 @@ export default function AddStockDialog({ open, onOpenChange, tenantId, products,
                   rules={{ required: 'Please select a product' }}
                   render={({ field, fieldState }) => (
                     <ProductPicker
-                      products={products}
+                      products={products.filter((p) => p.is_active !== false)}
                       value={field.value}
                       onChange={field.onChange}
                       tenantId={tenantId}

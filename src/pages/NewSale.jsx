@@ -6,6 +6,7 @@ import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
 import { useAuth } from '@/context/AuthContext'
 import { getInventory, getProductByImei } from '@/lib/inventory'
+import { getCurrentPrices, priceKey } from '@/lib/modelPrices'
 import { getCustomerByPhone, createCustomer } from '@/lib/customers'
 import { getTenantUsers } from '@/lib/users'
 import { createSale } from '@/lib/sales'
@@ -143,6 +144,10 @@ export default function NewSale() {
   const [paymentMethod, setPaymentMethod] = useState('cash')
   const [paymentStatus, setPaymentStatus] = useState('paid')
   const [upiRef, setUpiRef] = useState('')
+  const [mixedFinance, setMixedFinance] = useState(false)
+
+  // Model-level prices (official units' cost basis)
+  const [priceMap, setPriceMap] = useState(new Map())
 
   const [submitting, setSubmitting] = useState(false)
   const submittingRef = useRef(false)
@@ -150,9 +155,10 @@ export default function NewSale() {
 
   useEffect(() => {
     if (!tenantId) return
-    Promise.all([getInventory(tenantId), getTenantUsers(tenantId)]).then(([inv, users]) => {
+    Promise.all([getInventory(tenantId), getTenantUsers(tenantId), getCurrentPrices(tenantId)]).then(([inv, users, prices]) => {
       setInventory(inv.data ?? [])
       setEmployees(users.data ?? [])
+      setPriceMap(prices.map ?? new Map())
       if (currentUser?.id) setEmployeeId(currentUser.id)
     })
   }, [tenantId])
@@ -283,6 +289,8 @@ export default function NewSale() {
       unit_price: price,
       discount_amount: Number(lineDiscount) || 0,
       max_qty: selectedInv.quantity_remaining,
+      stock_source: selectedInv.stock_source,
+      purchase_price: selectedInv.purchase_price,
     }])
     setSelectedInv(null); setProductSearch(''); setImeiNumber('')
     setQty(1); setUnitPrice(''); setLineDiscount(0)
@@ -310,17 +318,56 @@ export default function NewSale() {
     return { subtotal, discount, taxable, cgst, sgst, igst, totalGst, grandTotal: taxable + totalGst }
   }, [cart, sameState])
 
+  // ── Cost basis preview ───────────────────────────────────────────────────
+  // Any finance involvement (full EMI or part of a mixed payment) → Finance price.
+  const financeInvolved = paymentMethod === 'emi' || (paymentMethod === 'mixed' && mixedFinance)
+
+  // For each cart item: the cost that will be frozen on the sale, or null if
+  // an official unit's model has no current price (which blocks the sale).
+  const itemCost = (item) => {
+    if (item.stock_source === 'official') {
+      const p = item.products ?? {}
+      const price = priceMap.get(priceKey(p.brand, p.model, p.variant))
+      const basis = financeInvolved ? price?.finance_price : price?.oc_price
+      return basis == null
+        ? { basis: null, source: financeInvolved ? 'finance' : 'oc' }
+        : { basis: Number(basis), source: financeInvolved ? 'finance' : 'oc' }
+    }
+    return { basis: item.purchase_price != null ? Number(item.purchase_price) : null, source: 'unit' }
+  }
+
+  const missingPriceItems = useMemo(
+    () => cart.filter((item) => item.stock_source === 'official' && itemCost(item).basis == null),
+    [cart, priceMap, financeInvolved] // eslint-disable-line react-hooks/exhaustive-deps
+  )
+
+  const estProfit = useMemo(() => {
+    let profit = 0
+    for (const item of cart) {
+      const { basis } = itemCost(item)
+      if (basis == null) return null // unknown cost somewhere — no estimate
+      const revenue = item.unit_price * item.quantity - (item.discount_amount || 0)
+      profit += revenue - basis * item.quantity
+    }
+    return profit
+  }, [cart, priceMap, financeInvolved]) // eslint-disable-line react-hooks/exhaustive-deps
+
   // ── Submit ───────────────────────────────────────────────────────────────
   const handleGenerateInvoice = async () => {
     if (submittingRef.current) return
     if (cart.length === 0) { toast.error('Add at least one item to the cart'); return }
     if (!selectedCustomer) { toast.error('Identify a customer first'); return }
     if (!employeeId) { toast.error('Select an employee'); return }
+    if (missingPriceItems.length > 0) {
+      const names = missingPriceItems.map((i) => i.product_name).join(', ')
+      toast.error(`Sale blocked: no current ${financeInvolved ? 'Finance' : 'O/C'} price for ${names}. Set it in the Price Editor first.`)
+      return
+    }
 
     submittingRef.current = true; setSubmitting(true)
 
     const { data, error } = await createSale(
-      { employee_id: employeeId, payment_method: paymentMethod, payment_status: paymentStatus, upi_reference: paymentMethod === 'upi' ? upiRef : null },
+      { employee_id: employeeId, payment_method: paymentMethod, payment_status: paymentStatus, finance_involved: financeInvolved, upi_reference: paymentMethod === 'upi' ? upiRef : null },
       cart,
       { customer: selectedCustomer, tenant: currentTenant }
     )
@@ -403,6 +450,8 @@ export default function NewSale() {
       unit_price: price,
       discount_amount: Number(scanDiscount) || 0,
       max_qty: 1,
+      stock_source: scannedDevice.stock_source,
+      purchase_price: scannedDevice.purchase_price,
     }])
     clearScan()
     toast.success('Added to cart')
@@ -844,6 +893,25 @@ export default function NewSale() {
                             </div>
                           </div>
 
+                          {/* Official units: model-level prices are the profit basis */}
+                          {scannedDevice.stock_source === 'official' && (() => {
+                            const mp = priceMap.get(priceKey(p.brand, p.model, p.variant))
+                            if (!mp || (mp.finance_price == null && mp.oc_price == null)) {
+                              return (
+                                <p className="text-xs text-amber-400 font-medium">
+                                  No Finance / O/C price set for this model — the sale will be blocked until set in the Price Editor.
+                                </p>
+                              )
+                            }
+                            return (
+                              <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground border-t border-border pt-2.5">
+                                <span>MOP: <span className="text-foreground font-medium">{mp.mop == null ? '—' : fmt(mp.mop)}</span></span>
+                                <span>Finance: <span className="text-foreground font-medium">{mp.finance_price == null ? '—' : fmt(mp.finance_price)}</span></span>
+                                <span>O/C: <span className="text-foreground font-medium">{mp.oc_price == null ? '—' : fmt(mp.oc_price)}</span></span>
+                              </div>
+                            )
+                          })()}
+
                           <div className="grid grid-cols-2 gap-3">
                             <div className="space-y-1.5">
                               <Label>Selling Price <span className="text-red-400">*</span></Label>
@@ -988,6 +1056,8 @@ export default function NewSale() {
                     <tbody className="divide-y divide-border">
                       {cart.map((item) => {
                         const lineTotal = item.unit_price * item.quantity - (item.discount_amount || 0)
+                        const cost = itemCost(item)
+                        const costLabel = { finance: 'Finance', oc: 'O/C', unit: 'Cost' }[cost.source]
                         return (
                           <tr key={item._id}>
                             <td className="py-2 pr-2">
@@ -995,6 +1065,11 @@ export default function NewSale() {
                               {item.imei_number && (
                                 <p className="text-xs text-muted-foreground">IMEI: {item.imei_number}</p>
                               )}
+                              {item.stock_source === 'official' && cost.basis == null ? (
+                                <p className="text-xs text-red-400 font-medium">No {costLabel} price set — blocks sale</p>
+                              ) : cost.basis != null ? (
+                                <p className="text-xs text-muted-foreground">{costLabel}: {fmt(cost.basis)}</p>
+                              ) : null}
                             </td>
                             <td className="py-2 text-right text-xs">{item.quantity}</td>
                             <td className="py-2 text-right text-xs">{fmt(item.unit_price)}</td>
@@ -1057,6 +1132,20 @@ export default function NewSale() {
                 </div>
                 <div className="border-t border-border pt-2">
                   <Row label="Grand Total" value={fmt(summary.grandTotal)} bold />
+                </div>
+                <div className="border-t border-border pt-2">
+                  {missingPriceItems.length > 0 ? (
+                    <p className="text-xs text-red-400">
+                      {missingPriceItems.length} official item{missingPriceItems.length > 1 ? 's' : ''} ha{missingPriceItems.length > 1 ? 've' : 's'} no
+                      {' '}{financeInvolved ? 'Finance' : 'O/C'} price — set it in the Price Editor to enable this sale
+                    </p>
+                  ) : estProfit != null ? (
+                    <Row
+                      label={`Est. Profit (${financeInvolved ? 'Finance' : 'O/C'}/cost basis)`}
+                      value={fmt(estProfit)}
+                      className={estProfit >= 0 ? 'text-emerald-400' : 'text-red-400'}
+                    />
+                  ) : null}
                 </div>
               </CardContent>
             </Card>
@@ -1123,6 +1212,22 @@ export default function NewSale() {
                   <Label className="text-xs">UPI Reference</Label>
                   <Input value={upiRef} onChange={(e) => setUpiRef(e.target.value)} placeholder="UPI transaction ID" />
                 </div>
+              )}
+              {paymentMethod === 'mixed' && (
+                <label className="flex items-center gap-2 text-sm cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={mixedFinance}
+                    onChange={(e) => setMixedFinance(e.target.checked)}
+                    className="w-4 h-4 accent-indigo-500"
+                  />
+                  <span>Finance involved (Bajaj etc.)</span>
+                </label>
+              )}
+              {financeInvolved && (
+                <p className="text-xs text-muted-foreground">
+                  Finance involved — official units are costed at their Finance price.
+                </p>
               )}
             </CardContent>
           </Card>
