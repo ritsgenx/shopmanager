@@ -364,7 +364,7 @@ export default function NewSale() {
       return
     }
     setScannedDevice(data)
-    setScanSellPrice(String(data.selling_price || data.purchase_price || ''))
+    setScanSellPrice(String(data.selling_price || ''))
     setScanDiscount(0)
   }
 
@@ -904,7 +904,9 @@ export default function NewSale() {
                         <span className={cn('ml-2 text-xs', inv.quantity_remaining <= 5 ? 'text-amber-400' : 'text-emerald-400')}>
                           {inv.quantity_remaining} left
                         </span>
-                        <span className="ml-2 text-xs text-muted-foreground">· Sell: {fmt(inv.selling_price)}</span>
+                        {inv.selling_price != null && (
+                          <span className="ml-2 text-xs text-muted-foreground">· Asking: {fmt(inv.selling_price)}</span>
+                        )}
                       </div>
                     )}
                     onSelect={handleSelectProduct}

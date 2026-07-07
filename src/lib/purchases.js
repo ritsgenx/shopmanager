@@ -64,7 +64,7 @@ export async function createPurchase(headerData, lineItems, tenantId, approvalMe
       product_id: item.product_id,
       purchase_id: purchase.id,
       purchase_price: item.unit_price,
-      selling_price: item.unit_price, // default — user can update in Inventory module
+      selling_price: null, // asking price is optional — set in Inventory, actual price entered at sale time
       quantity: item.quantity,
       imei_number: item.imei_number || null,
       stock_source: headerData.purchase_type === 'official' ? 'official' : 'unofficial',

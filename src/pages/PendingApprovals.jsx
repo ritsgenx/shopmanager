@@ -334,7 +334,7 @@ export default function PendingApprovals() {
                           <div className="text-right">
                             <p className="text-xs text-muted-foreground mb-0.5">Purchase Price</p>
                             <p className="text-xl font-bold">{fmt(item.purchase_price)}</p>
-                            <p className="text-xs text-muted-foreground mt-0.5">Selling: {fmt(item.selling_price)}</p>
+                            <p className="text-xs text-muted-foreground mt-0.5">Asking: {item.selling_price != null ? fmt(item.selling_price) : '—'}</p>
                           </div>
                         </div>
 
@@ -411,8 +411,8 @@ export default function PendingApprovals() {
                           <p className="font-bold">{fmt(item.purchase_price)}</p>
                         </div>
                         <div className="text-right">
-                          <p className="text-xs text-muted-foreground">Selling</p>
-                          <p className="font-medium text-muted-foreground">{fmt(item.selling_price)}</p>
+                          <p className="text-xs text-muted-foreground">Asking</p>
+                          <p className="font-medium text-muted-foreground">{item.selling_price != null ? fmt(item.selling_price) : '—'}</p>
                         </div>
                       </div>
 
