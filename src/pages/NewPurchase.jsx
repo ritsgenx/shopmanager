@@ -2,13 +2,14 @@ import React, { useState, useEffect, useCallback, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useForm, Controller } from 'react-hook-form'
 import { motion } from 'framer-motion'
-import { ArrowLeft, Plus, Trash2, Loader2 } from 'lucide-react'
+import { ArrowLeft, Plus, Trash2, Loader2, ScanBarcode } from 'lucide-react'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
 import { useAuth } from '@/context/AuthContext'
 import { getProducts } from '@/lib/products'
 import { PHONE_RULES_OPTIONAL, phoneInputProps } from '@/lib/validations'
 import { createPurchase } from '@/lib/purchases'
+import { getProductByImei } from '@/lib/inventory'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -17,6 +18,8 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select'
 import LineItemDialog from '@/components/purchases/LineItemDialog'
+import BatchScanDialog from '@/components/purchases/BatchScanDialog'
+import ImeiInput from '@/components/inventory/ImeiInput'
 
 const fmt = (n) => `₹${Number(n || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 
@@ -32,6 +35,7 @@ export default function NewPurchase() {
   const [purchaseType, setPurchaseType] = useState('official')
   const [lineItems, setLineItems] = useState([])
   const [lineDialogOpen, setLineDialogOpen] = useState(false)
+  const [batchScanOpen, setBatchScanOpen] = useState(false)
   const [products, setProducts] = useState([])
   const [submitting, setSubmitting] = useState(false)
   const submittingRef = useRef(false)
@@ -67,6 +71,49 @@ export default function NewPurchase() {
 
   const removeItem = (id) => {
     setLineItems((prev) => prev.filter((item) => item._id !== id))
+  }
+
+  // Warn (non-blocking) if a scanned/typed IMEI already exists in inventory
+  const warnIfInInventory = (imei) => {
+    getProductByImei(tenantId, imei).then(({ data }) => {
+      if (!data) return
+      const p = data.products ?? {}
+      const name = [p.brand, p.model].filter(Boolean).join(' ') || 'a device'
+      toast.warning(
+        data.status === 'sold'
+          ? `IMEI …${imei.slice(-6)} matches ${name} that was already sold — possible buy-back.`
+          : `IMEI …${imei.slice(-6)} is already in inventory (${name}).`
+      )
+    })
+  }
+
+  // Batch scan: returns true if the scan was accepted (beep + count in dialog)
+  const handleDeviceScanned = (imei, product) => {
+    if (lineItems.some((item) => item.imei_number === imei)) {
+      toast.error('This IMEI is already in this purchase order')
+      return false
+    }
+    if (product) {
+      setLineItems((prev) => [...prev, {
+        _id: nextId(),
+        product_id: product.id,
+        product_name: [product.brand, product.model, product.variant && `(${product.variant})`].filter(Boolean).join(' '),
+        gst_rate: Number(product.gst_rate ?? 18),
+        category: 'smartphone',
+        quantity: 1,
+        unit_price: '',
+        imei_number: imei,
+      }])
+    } else {
+      const emptyRow = lineItems.find((item) => item.category === 'smartphone' && !item.imei_number)
+      if (!emptyRow) {
+        toast.error('No empty IMEI rows left — pick a product in the scanner or add items first')
+        return false
+      }
+      updateItem(emptyRow._id, 'imei_number', imei)
+    }
+    warnIfInInventory(imei)
+    return true
   }
 
   const isOfficial = purchaseType === 'official'
@@ -303,15 +350,26 @@ export default function NewPurchase() {
           <CardHeader>
             <div className="flex items-center justify-between">
               <CardTitle className="text-base">Line Items</CardTitle>
-              <Button
-                type="button"
-                size="sm"
-                onClick={() => setLineDialogOpen(true)}
-                className="bg-indigo-500 hover:bg-indigo-600 text-white"
-              >
-                <Plus className="w-4 h-4 mr-1.5" />
-                Add Item
-              </Button>
+              <div className="flex gap-2">
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  onClick={() => setBatchScanOpen(true)}
+                >
+                  <ScanBarcode className="w-4 h-4 mr-1.5" />
+                  Scan Devices
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  onClick={() => setLineDialogOpen(true)}
+                  className="bg-indigo-500 hover:bg-indigo-600 text-white"
+                >
+                  <Plus className="w-4 h-4 mr-1.5" />
+                  Add Item
+                </Button>
+              </div>
             </div>
           </CardHeader>
           <CardContent>
@@ -349,17 +407,21 @@ export default function NewPurchase() {
                               <p className="text-xs text-muted-foreground">GST: {item.gst_rate}%</p>
                             )}
                             {isPhone && (
-                              <div className="mt-1">
-                                <Input
-                                  type="text"
-                                  maxLength={15}
-                                  inputMode="numeric"
-                                  placeholder="IMEI — 15 digits *"
+                              <div className="mt-1 w-48">
+                                <ImeiInput
+                                  compact
                                   value={item.imei_number || ''}
-                                  onChange={(e) => updateItem(item._id, 'imei_number', e.target.value)}
-                                  className={`w-40 h-7 text-xs font-mono ${imeiInvalid ? 'border-red-500' : ''}`}
+                                  onChange={(v) => updateItem(item._id, 'imei_number', v)}
+                                  tenantId={tenantId}
+                                  placeholder="IMEI — 15 digits *"
+                                  error={imeiInvalid ? 'Must be 15 digits' : undefined}
+                                  inputClassName={imeiInvalid ? 'border-red-500' : ''}
+                                  extraCheck={(imei) =>
+                                    lineItems.some((other) => other._id !== item._id && other.imei_number === imei)
+                                      ? 'Duplicate IMEI in this purchase order'
+                                      : null
+                                  }
                                 />
-                                {imeiInvalid && <p className="text-red-400 text-xs mt-0.5">Must be 15 digits</p>}
                               </div>
                             )}
                           </td>
@@ -470,6 +532,13 @@ export default function NewPurchase() {
         tenantId={tenantId}
         products={products}
         onAdd={handleAddLineItem}
+      />
+
+      <BatchScanDialog
+        open={batchScanOpen}
+        onOpenChange={setBatchScanOpen}
+        products={products}
+        onDeviceScanned={handleDeviceScanned}
       />
     </motion.div>
   )

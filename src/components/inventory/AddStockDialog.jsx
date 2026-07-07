@@ -1,10 +1,10 @@
 import React, { useState, useEffect } from 'react'
 import { useForm, Controller } from 'react-hook-form'
-import { Loader2, Camera } from 'lucide-react'
+import { Loader2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
 import { createProduct } from '@/lib/products'
-import { createInventory, getProductByImei } from '@/lib/inventory'
+import { createInventory } from '@/lib/inventory'
 import { useAuth } from '@/context/AuthContext'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -15,9 +15,10 @@ import {
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select'
-import BarcodeScanner from './BarcodeScanner'
+import ImeiInput from './ImeiInput'
+import ProductPicker from '@/components/ProductPicker'
 
-function PurchaseFields({ register, errors, control, onScanClick }) {
+function PurchaseFields({ register, errors, control, tenantId, onLookupResult }) {
   return (
     <>
       {/* Stock Source */}
@@ -57,13 +58,12 @@ function PurchaseFields({ register, errors, control, onScanClick }) {
           {errors.purchase_price && <p className="text-red-400 text-xs">{errors.purchase_price.message}</p>}
         </div>
         <div className="space-y-1.5">
-          <Label className="text-slate-300">Selling Price (₹)</Label>
+          <Label className="text-slate-300">Asking Price (₹) <span className="text-slate-500 text-xs">(optional)</span></Label>
           <Input
             {...register('selling_price', {
-              required: 'Required',
-              min: { value: 0.01, message: 'Must be > 0' },
+              validate: (v) => v === '' || Number(v) > 0 || 'Must be > 0',
             })}
-            type="number" step="0.01" placeholder="0.00"
+            type="number" step="0.01" placeholder="Set at sale time"
             className="bg-slate-700 border-slate-600 text-white placeholder:text-slate-500"
           />
           {errors.selling_price && <p className="text-red-400 text-xs">{errors.selling_price.message}</p>}
@@ -75,29 +75,25 @@ function PurchaseFields({ register, errors, control, onScanClick }) {
         <Label className="text-slate-300">
           IMEI <span className="text-red-400">*</span>
         </Label>
-        <div className="flex gap-2">
-          <Input
-            {...register('imei_number', {
-              required: 'IMEI is required',
-              pattern: { value: /^\d{15}$/, message: 'IMEI must be exactly 15 digits' },
-            })}
-            placeholder="123456789012345"
-            maxLength={15}
-            inputMode="numeric"
-            className="bg-slate-700 border-slate-600 text-white placeholder:text-slate-500 font-mono flex-1"
-          />
-          <Button
-            type="button"
-            variant="outline"
-            size="icon"
-            onClick={onScanClick}
-            className="border-slate-600 text-slate-300 hover:bg-slate-700 hover:text-indigo-400 shrink-0"
-            title="Scan barcode"
-          >
-            <Camera className="w-4 h-4" />
-          </Button>
-        </div>
-        {errors.imei_number && <p className="text-red-400 text-xs">{errors.imei_number.message}</p>}
+        <Controller
+          name="imei_number"
+          control={control}
+          rules={{
+            required: 'IMEI is required',
+            pattern: { value: /^\d{15}$/, message: 'IMEI must be exactly 15 digits' },
+          }}
+          render={({ field, fieldState }) => (
+            <ImeiInput
+              value={field.value}
+              onChange={field.onChange}
+              tenantId={tenantId}
+              onLookupResult={onLookupResult}
+              error={fieldState.error?.message}
+              inputClassName="bg-slate-700 border-slate-600 text-white placeholder:text-slate-500"
+              buttonClassName="border-slate-600 text-slate-300 hover:bg-slate-700 hover:text-indigo-400"
+            />
+          )}
+        />
         <p className="text-xs text-slate-500">One unit per entry — each device requires its own IMEI</p>
       </div>
     </>
@@ -108,7 +104,6 @@ export default function AddStockDialog({ open, onOpenChange, tenantId, products,
   const { currentUser } = useAuth()
   const isOwner = currentUser?.role === 'admin'
   const [mode, setMode] = useState('existing')
-  const [scanOpen, setScanOpen] = useState(false)
 
   const formA = useForm({
     defaultValues: { product_id: '', purchase_price: '', selling_price: '', quantity: '', imei_number: '', stock_source: 'manual' },
@@ -126,7 +121,6 @@ export default function AddStockDialog({ open, onOpenChange, tenantId, products,
       formA.reset()
       formB.reset({ gst_rate: '18' })
       setMode('existing')
-      setScanOpen(false)
     }
   }, [open])
 
@@ -136,22 +130,11 @@ export default function AddStockDialog({ open, onOpenChange, tenantId, products,
     formB.reset({ gst_rate: '18' })
   }
 
-  const handleScan = async (imei) => {
-    // Fill IMEI in whichever form is active
-    if (mode === 'existing') {
-      formA.setValue('imei_number', imei, { shouldValidate: true })
-
-      // Try to auto-select product if this IMEI was seen before
-      const { data } = await getProductByImei(tenantId, imei)
-      if (data?.product_id) {
-        formA.setValue('product_id', data.product_id)
-        toast.success('IMEI scanned — product auto-selected')
-      } else {
-        toast.success('IMEI scanned — please select the product')
-      }
-    } else {
-      formB.setValue('imei_number', imei, { shouldValidate: true })
-      toast.success('IMEI scanned')
+  // When an entered/scanned IMEI matches a known device, auto-select its product
+  const handleLookupA = (data) => {
+    if (data?.product_id && !formA.getValues('product_id')) {
+      formA.setValue('product_id', data.product_id)
+      toast.success('Product auto-selected from IMEI')
     }
   }
 
@@ -161,7 +144,7 @@ export default function AddStockDialog({ open, onOpenChange, tenantId, products,
       tenant_id: tenantId,
       product_id: values.product_id,
       purchase_price: Number(values.purchase_price),
-      selling_price: Number(values.selling_price),
+      selling_price: values.selling_price ? Number(values.selling_price) : null,
       quantity: 1,
       imei_number: values.imei_number || null,
       stock_source: values.stock_source || 'manual',
@@ -203,7 +186,7 @@ export default function AddStockDialog({ open, onOpenChange, tenantId, products,
       tenant_id: tenantId,
       product_id: product.id,
       purchase_price: Number(values.purchase_price),
-      selling_price: Number(values.selling_price),
+      selling_price: values.selling_price ? Number(values.selling_price) : null,
       quantity: 1,
       imei_number: values.imei_number || null,
       stock_source: values.stock_source || 'manual',
@@ -259,35 +242,24 @@ export default function AddStockDialog({ open, onOpenChange, tenantId, products,
                   name="product_id"
                   control={formA.control}
                   rules={{ required: 'Please select a product' }}
-                  render={({ field }) => (
-                    <Select onValueChange={field.onChange} value={field.value}>
-                      <SelectTrigger className="bg-slate-700 border-slate-600 text-white">
-                        <SelectValue placeholder="Select a product…" />
-                      </SelectTrigger>
-                      <SelectContent className="bg-slate-800 border-slate-600">
-                        {products.length === 0 ? (
-                          <div className="p-3 text-sm text-slate-400 text-center">
-                            No products yet — switch to "New Product"
-                          </div>
-                        ) : (
-                          products.map((p) => (
-                            <SelectItem key={p.id} value={p.id} className="text-white focus:bg-slate-700 focus:text-white">
-                              {p.brand} {p.model}{p.variant ? ` (${p.variant})` : ''}{p.color ? ` — ${p.color}` : ''}
-                            </SelectItem>
-                          ))
-                        )}
-                      </SelectContent>
-                    </Select>
+                  render={({ field, fieldState }) => (
+                    <ProductPicker
+                      products={products}
+                      value={field.value}
+                      onChange={field.onChange}
+                      tenantId={tenantId}
+                      error={fieldState.error?.message}
+                    />
                   )}
                 />
-                {errA.product_id && <p className="text-red-400 text-xs">{errA.product_id.message}</p>}
               </div>
 
               <PurchaseFields
                 register={formA.register}
                 errors={errA}
                 control={formA.control}
-                onScanClick={() => setScanOpen(true)}
+                tenantId={tenantId}
+                onLookupResult={handleLookupA}
               />
 
               <DialogFooter className="pt-2">
@@ -370,7 +342,7 @@ export default function AddStockDialog({ open, onOpenChange, tenantId, products,
                   register={formB.register}
                   errors={errB}
                   control={formB.control}
-                  onScanClick={() => setScanOpen(true)}
+                  tenantId={tenantId}
                 />
               </div>
 
@@ -385,12 +357,6 @@ export default function AddStockDialog({ open, onOpenChange, tenantId, products,
           )}
         </DialogContent>
       </Dialog>
-
-      <BarcodeScanner
-        open={scanOpen}
-        onClose={() => setScanOpen(false)}
-        onScan={handleScan}
-      />
     </>
   )
 }

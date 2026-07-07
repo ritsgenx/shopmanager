@@ -13,6 +13,7 @@ import {
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select'
+import ImeiInput from './ImeiInput'
 
 export default function EditStockDialog({ open, onOpenChange, item, onSuccess }) {
   const { currentTenant, currentUser } = useAuth()
@@ -41,7 +42,7 @@ export default function EditStockDialog({ open, onOpenChange, item, onSuccess })
 
     const payload = {
       purchase_price: Number(values.purchase_price),
-      selling_price: Number(values.selling_price),
+      selling_price: values.selling_price ? Number(values.selling_price) : null,
       shelf_location: values.shelf_location || null,
       status: values.status,
       imei_number: values.imei_number || null,
@@ -97,15 +98,15 @@ export default function EditStockDialog({ open, onOpenChange, item, onSuccess })
               )}
             </div>
             <div className="space-y-1.5">
-              <Label className="text-slate-300">Selling Price (₹)</Label>
+              <Label className="text-slate-300">Asking Price (₹) <span className="text-slate-500 text-xs">(optional)</span></Label>
               <Input
                 {...register('selling_price', {
-                  required: 'Required',
-                  min: { value: 0.01, message: 'Must be > 0' },
+                  validate: (v) => v === '' || Number(v) > 0 || 'Must be > 0',
                 })}
                 type="number"
                 step="0.01"
-                className="bg-slate-700 border-slate-600 text-white"
+                placeholder="Set at sale time"
+                className="bg-slate-700 border-slate-600 text-white placeholder:text-slate-500"
               />
               {errors.selling_price && (
                 <p className="text-red-400 text-xs">{errors.selling_price.message}</p>
@@ -128,19 +129,25 @@ export default function EditStockDialog({ open, onOpenChange, item, onSuccess })
           {/* IMEI — always required */}
           <div className="space-y-1.5">
             <Label className="text-slate-300">IMEI <span className="text-red-400">*</span></Label>
-            <Input
-              {...register('imei_number', {
+            <Controller
+              name="imei_number"
+              control={control}
+              rules={{
                 required: 'IMEI is required',
                 pattern: { value: /^\d{15}$/, message: 'IMEI must be exactly 15 digits' },
-              })}
-              placeholder="123456789012345"
-              maxLength={15}
-              inputMode="numeric"
-              className="bg-slate-700 border-slate-600 text-white placeholder:text-slate-500 font-mono"
+              }}
+              render={({ field, fieldState }) => (
+                <ImeiInput
+                  value={field.value}
+                  onChange={field.onChange}
+                  tenantId={currentTenant?.id}
+                  excludeInventoryId={item.id}
+                  error={fieldState.error?.message}
+                  inputClassName="bg-slate-700 border-slate-600 text-white placeholder:text-slate-500"
+                  buttonClassName="border-slate-600 text-slate-300 hover:bg-slate-700 hover:text-indigo-400"
+                />
+              )}
             />
-            {errors.imei_number && (
-              <p className="text-red-400 text-xs">{errors.imei_number.message}</p>
-            )}
           </div>
 
           {/* Status */}

@@ -13,6 +13,7 @@ import {
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select'
+import ProductPicker from '@/components/ProductPicker'
 
 export default function LineItemDialog({ open, onOpenChange, tenantId, products, onAdd }) {
   const [mode, setMode] = useState('existing')
@@ -107,28 +108,16 @@ export default function LineItemDialog({ open, onOpenChange, tenantId, products,
                 name="product_id"
                 control={formA.control}
                 rules={{ required: 'Please select a product' }}
-                render={({ field }) => (
-                  <Select onValueChange={field.onChange} value={field.value}>
-                    <SelectTrigger className="bg-slate-700 border-slate-600 text-white">
-                      <SelectValue placeholder="Select a product…" />
-                    </SelectTrigger>
-                    <SelectContent className="bg-slate-800 border-slate-600">
-                      {products.length === 0 ? (
-                        <div className="p-3 text-sm text-slate-400 text-center">
-                          No products yet — use "New Product"
-                        </div>
-                      ) : (
-                        products.map((p) => (
-                          <SelectItem key={p.id} value={p.id} className="text-white focus:bg-slate-700 focus:text-white">
-                            {p.brand} {p.model}{p.variant ? ` (${p.variant})` : ''}{p.color ? ` — ${p.color}` : ''}
-                          </SelectItem>
-                        ))
-                      )}
-                    </SelectContent>
-                  </Select>
+                render={({ field, fieldState }) => (
+                  <ProductPicker
+                    products={products}
+                    value={field.value}
+                    onChange={field.onChange}
+                    tenantId={tenantId}
+                    error={fieldState.error?.message}
+                  />
                 )}
               />
-              {errA.product_id && <p className="text-red-400 text-xs">{errA.product_id.message}</p>}
             </div>
             <DialogFooter>
               <Button type="button" variant="outline" onClick={() => onOpenChange(false)} className="border-slate-600 text-slate-300 hover:bg-slate-700">Cancel</Button>

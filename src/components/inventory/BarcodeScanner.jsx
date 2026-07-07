@@ -6,11 +6,9 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle,
 } from '@/components/ui/dialog'
 
-const SCANNER_DIV_ID = 'imei-barcode-scanner'
-
 // Mimics the classic handheld barcode scanner beep used in retail shops:
 // two sharp square-wave chirps at 1800 Hz — loud, crisp, instant on/off.
-function playBeep() {
+export function playBeep() {
   try {
     const ctx = new (window.AudioContext || window.webkitAudioContext)()
 
@@ -33,28 +31,25 @@ function playBeep() {
   } catch {}
 }
 
-export default function BarcodeScanner({ open, onClose, onScan }) {
+let _camId = 0
+
+// Bare camera view: starts on mount, stops on unmount, calls onDetect(imei)
+// for every frame in which a 15-digit run is decoded. No beep, no dedupe —
+// the caller decides what counts as an accepted scan.
+export function BarcodeCameraView({ onDetect }) {
+  const divIdRef = useRef(`imei-camera-${++_camId}`)
   const scannerRef = useRef(null)
+  const onDetectRef = useRef(onDetect)
+  onDetectRef.current = onDetect
   const [error, setError] = useState(null)
 
-  const stopScanner = async () => {
-    const scanner = scannerRef.current
-    if (!scanner) return
-    try {
-      await scanner.stop()
-      scanner.clear()
-    } catch {}
-    scannerRef.current = null
-  }
-
   useEffect(() => {
-    if (!open) return
-
-    setError(null)
+    let cancelled = false
 
     // Small delay so the dialog div is in the DOM before initialising
     const timer = setTimeout(() => {
-      const scanner = new Html5Qrcode(SCANNER_DIV_ID)
+      if (cancelled) return
+      const scanner = new Html5Qrcode(divIdRef.current)
       scannerRef.current = scanner
 
       scanner.start(
@@ -64,11 +59,7 @@ export default function BarcodeScanner({ open, onClose, onScan }) {
         (decodedText) => {
           // Find the first run of exactly 15 consecutive digits (the IMEI)
           const match = decodedText.match(/\d{15}/)
-          if (match) {
-            playBeep()
-            onScan(match[0])
-            stopScanner().then(onClose)
-          }
+          if (match) onDetectRef.current(match[0])
         },
         () => {} // per-frame decode errors — always ignore
       ).catch(() => {
@@ -77,17 +68,51 @@ export default function BarcodeScanner({ open, onClose, onScan }) {
     }, 150)
 
     return () => {
+      cancelled = true
       clearTimeout(timer)
-      stopScanner()
+      const scanner = scannerRef.current
+      if (scanner) {
+        scanner.stop().then(() => scanner.clear()).catch(() => {})
+        scannerRef.current = null
+      }
     }
-  }, [open])
+  }, [])
 
-  const handleClose = () => {
-    stopScanner().then(onClose)
+  if (error) {
+    return (
+      <div className="rounded-lg bg-red-500/10 border border-red-500/30 px-4 py-6 text-center">
+        <X className="w-6 h-6 text-red-400 mx-auto mb-2" />
+        <p className="text-sm text-red-400">{error}</p>
+      </div>
+    )
   }
 
   return (
-    <Dialog open={open} onOpenChange={(o) => { if (!o) handleClose() }}>
+    <div
+      id={divIdRef.current}
+      className="w-full overflow-hidden rounded-lg [&_video]:rounded-lg [&_video]:w-full"
+    />
+  )
+}
+
+// Single-shot scanner dialog: beeps, returns one IMEI via onScan, then closes.
+export default function BarcodeScanner({ open, onClose, onScan }) {
+  const handledRef = useRef(false)
+
+  useEffect(() => {
+    if (open) handledRef.current = false
+  }, [open])
+
+  const handleDetect = (imei) => {
+    if (handledRef.current) return
+    handledRef.current = true
+    playBeep()
+    onScan(imei)
+    onClose()
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={(o) => { if (!o) onClose() }}>
       <DialogContent
         className="bg-slate-800 border-slate-700 text-white max-w-sm"
         onInteractOutside={(e) => e.preventDefault()}
@@ -103,22 +128,12 @@ export default function BarcodeScanner({ open, onClose, onScan }) {
           Point your camera at the barcode on the phone box. The IMEI will fill in automatically.
         </p>
 
-        {error ? (
-          <div className="rounded-lg bg-red-500/10 border border-red-500/30 px-4 py-6 text-center">
-            <X className="w-6 h-6 text-red-400 mx-auto mb-2" />
-            <p className="text-sm text-red-400">{error}</p>
-          </div>
-        ) : (
-          <div
-            id={SCANNER_DIV_ID}
-            className="w-full overflow-hidden rounded-lg [&_video]:rounded-lg [&_video]:w-full"
-          />
-        )}
+        {open && <BarcodeCameraView onDetect={handleDetect} />}
 
         <Button
           type="button"
           variant="outline"
-          onClick={handleClose}
+          onClick={onClose}
           className="w-full border-slate-600 text-slate-300 hover:bg-slate-700"
         >
           Cancel
