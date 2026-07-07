@@ -58,6 +58,7 @@ export default function InventoryDevice() {
   const [devices, setDevices] = useState([])
   const [loading, setLoading] = useState(true)
   const [searchInput, setSearchInput] = useState('')
+  const [statusFilter, setStatusFilter] = useState('in_stock')
   const [editItem, setEditItem] = useState(null)
   const [deleteItem, setDeleteItem] = useState(null)
   const [deleting, setDeleting] = useState(false)
@@ -81,21 +82,37 @@ export default function InventoryDevice() {
     if (tenantId) getProducts(tenantId).then(({ data }) => setProducts(data ?? []))
   }, [tenantId])
 
+  const inStockDevices = useMemo(() => devices.filter(d => (d.quantity_remaining ?? 0) > 0), [devices])
+  const soldDevices = useMemo(() => devices.filter(d => (d.quantity_remaining ?? 0) === 0), [devices])
+
+  const statusScoped = useMemo(() => {
+    if (statusFilter === 'in_stock') return inStockDevices
+    if (statusFilter === 'sold') return soldDevices
+    return devices
+  }, [devices, inStockDevices, soldDevices, statusFilter])
+
   const filtered = useMemo(() => {
     const term = searchInput.trim().toLowerCase()
-    if (!term) return devices
-    return devices.filter(d =>
+    if (!term) return statusScoped
+    return statusScoped.filter(d =>
       (d.imei_number ?? '').toLowerCase().includes(term) ||
       (d.products?.variant ?? '').toLowerCase().includes(term) ||
       (d.products?.color ?? '').toLowerCase().includes(term)
     )
-  }, [devices, searchInput])
+  }, [statusScoped, searchInput])
 
   const totalUnits = devices.reduce((s, d) => s + (d.quantity_remaining ?? 0), 0)
   const deviceCount = devices.length
   const avgPrice = deviceCount > 0
     ? Math.round(devices.reduce((s, d) => s + (d.purchase_price ?? 0), 0) / deviceCount)
     : 0
+
+  const emptyMessage = () => {
+    if (searchInput) return `No devices matching "${searchInput}"`
+    if (statusFilter === 'sold') return 'No sold devices yet'
+    if (statusFilter === 'in_stock') return devices.length > 0 ? 'No devices in stock — all sold' : 'No devices yet — click Add Device'
+    return 'No devices yet — click Add Device'
+  }
 
   const handleDelete = async () => {
     if (!deleteItem) return
@@ -169,20 +186,40 @@ export default function InventoryDevice() {
           </Button>
         </div>
 
-        <div className="relative max-w-sm">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-          <Input
-            placeholder="Search IMEI, variant, color…"
-            value={searchInput}
-            onChange={e => setSearchInput(e.target.value)}
-            className="pl-9 pr-8"
-          />
-          {searchInput && (
-            <button onClick={() => setSearchInput('')}
-              className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
-              <X className="w-3.5 h-3.5" />
-            </button>
-          )}
+        <div className="flex items-center gap-3 flex-wrap">
+          <div className="relative max-w-sm flex-1 min-w-[200px]">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+            <Input
+              placeholder="Search IMEI, variant, color…"
+              value={searchInput}
+              onChange={e => setSearchInput(e.target.value)}
+              className="pl-9 pr-8"
+            />
+            {searchInput && (
+              <button onClick={() => setSearchInput('')}
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
+                <X className="w-3.5 h-3.5" />
+              </button>
+            )}
+          </div>
+
+          <div className="flex gap-1 border border-border rounded-lg p-1 shrink-0">
+            {[
+              { value: 'in_stock', label: 'In Stock', count: inStockDevices.length },
+              { value: 'sold', label: 'Sold', count: soldDevices.length },
+              { value: 'all', label: 'All', count: devices.length },
+            ].map(({ value, label, count }) => (
+              <button
+                key={value}
+                onClick={() => setStatusFilter(value)}
+                className={`px-3 py-1.5 rounded text-sm font-medium transition-colors ${
+                  statusFilter === value ? 'bg-indigo-500 text-white' : 'text-muted-foreground hover:text-foreground'
+                }`}
+              >
+                {label} <span className="opacity-75">({count})</span>
+              </button>
+            ))}
+          </div>
         </div>
       </div>
 
@@ -232,7 +269,7 @@ export default function InventoryDevice() {
                 <td colSpan={9} className="px-4 py-20 text-center text-muted-foreground">
                   <Smartphone className="w-10 h-10 mx-auto mb-2 opacity-25" />
                   <p className="font-medium">
-                    {searchInput ? `No devices matching "${searchInput}"` : 'No devices yet — click Add Device'}
+                    {emptyMessage()}
                   </p>
                 </td>
               </tr>
@@ -306,7 +343,7 @@ export default function InventoryDevice() {
           <div className="flex flex-col items-center gap-2 py-16 text-muted-foreground">
             <Smartphone className="w-10 h-10 opacity-25" />
             <p className="font-medium text-center">
-              {searchInput ? `No devices matching "${searchInput}"` : 'No devices yet'}
+              {emptyMessage()}
             </p>
           </div>
         ) : (

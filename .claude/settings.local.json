@@ -2,7 +2,23 @@
   "permissions": {
     "allow": [
       "PowerShell(npm *)",
-      "PowerShell(Get-ChildItem \"C:\\\\Claude Projects\\\\MobileShop\\\\src\" -Recurse | Where-Object { -not $_.PSIsContainer } | Select-Object -ExpandProperty FullName)"
+      "PowerShell(Get-ChildItem \"C:\\\\Claude Projects\\\\MobileShop\\\\src\" -Recurse | Where-Object { -not $_.PSIsContainer } | Select-Object -ExpandProperty FullName)",
+      "PowerShell(New-Item *)",
+      "Skill(run)",
+      "Bash(git add *)",
+      "Bash(git commit *)",
+      "Bash(git push *)",
+      "Bash(npm run *)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" http://localhost:5173)",
+      "Bash(git -C \"C:\\\\Claude Projects\\\\MobileShop\" log --format=\"%H %s\" --all)",
+      "Bash(git *)",
+      "Bash(npx --yes playwright --version)",
+      "Bash(curl -sf http://localhost:5173/)",
+      "Bash(curl -s http://localhost:5173/src/main.jsx)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\\\\n\" \"http://localhost:5173/src/pages/Search.jsx\")",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\\\\n\" \"http://localhost:5173/src/lib/search.js\")",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\\\\n\" \"http://localhost:5173/src/pages/InventoryDevice.jsx\")",
+      "PowerShell(git *)"
     ]
   }
 }

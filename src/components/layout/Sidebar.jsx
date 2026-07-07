@@ -5,7 +5,7 @@ import {
   LayoutDashboard, Package, ShoppingCart, Users, UserCheck,
   CalendarCheck, BarChart3, Settings, LogOut, ChevronLeft,
   ChevronRight, Store, ShoppingBag, Wallet, KeyRound, ShieldCheck, X,
-  ClipboardList,
+  ClipboardList, Search,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useAuth } from '@/context/AuthContext'
@@ -18,6 +18,7 @@ import ChangePasswordDialog from '@/components/shared/ChangePasswordDialog'
 
 const navItems = [
   { to: '/dashboard',          icon: LayoutDashboard, label: 'Dashboard' },
+  { to: '/search',             icon: Search,          label: 'Search' },
   { to: '/inventory',          icon: Package,         label: 'Inventory' },
   { to: '/pending-approvals',  icon: ClipboardList,   label: 'Pending Approvals', adminOnly: true, showBadge: true },
   { to: '/purchases',          icon: ShoppingBag,     label: 'Purchases', permKey: 'can_access_purchases' },

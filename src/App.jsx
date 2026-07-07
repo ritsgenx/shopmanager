@@ -9,6 +9,7 @@ import Login from '@/pages/Login'
 import Dashboard from '@/pages/Dashboard'
 import Inventory from '@/pages/Inventory'
 import InventoryDevice from '@/pages/InventoryDevice'
+import SearchPage from '@/pages/Search'
 import Sales from '@/pages/Sales'
 import Customers from '@/pages/Customers'
 import Employees from '@/pages/Employees'
@@ -51,6 +52,7 @@ export default function App() {
             <Route path="/dashboard" element={<Dashboard />} />
             <Route path="/inventory" element={<Inventory />} />
             <Route path="/inventory/:brand/:model" element={<InventoryDevice />} />
+            <Route path="/search" element={<SearchPage />} />
             <Route path="/sales" element={<Sales />} />
             <Route path="/sales/new" element={<NewSale />} />
             <Route path="/customers" element={<Customers />} />
