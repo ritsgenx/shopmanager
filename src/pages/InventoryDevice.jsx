@@ -207,7 +207,7 @@ export default function InventoryDevice() {
             {[
               { value: 'in_stock', label: 'In Stock', count: inStockDevices.length },
               { value: 'sold', label: 'Sold', count: soldDevices.length },
-              { value: 'all', label: 'All', count: devices.length },
+              { value: 'all', label: 'Lifetime', count: devices.length },
             ].map(({ value, label, count }) => (
               <button
                 key={value}
@@ -226,7 +226,7 @@ export default function InventoryDevice() {
       {/* Stats row */}
       <div className="grid grid-cols-3 gap-3">
         <div className="rounded-xl border border-border bg-muted/20 p-3 text-center">
-          <p className="text-xs text-muted-foreground mb-1 uppercase tracking-wider">Total Devices</p>
+          <p className="text-xs text-muted-foreground mb-1 uppercase tracking-wider">Lifetime Devices</p>
           <p className="text-2xl font-bold">{loading ? '…' : deviceCount}</p>
         </div>
         <div className="rounded-xl border border-border bg-muted/20 p-3 text-center">

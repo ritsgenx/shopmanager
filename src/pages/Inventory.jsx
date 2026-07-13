@@ -3,25 +3,60 @@ import { useNavigate, useLocation } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import {
   Plus, Search, Package, X, ArrowLeft, ChevronRight,
-  Boxes, IndianRupee, AlertTriangle, PackageX,
+  Boxes, AlertTriangle, PackageX, Clock,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { useAuth } from '@/context/AuthContext'
 import { getInventoryForBrand, getBrandSummary } from '@/lib/inventory'
 import { getProducts } from '@/lib/products'
+import { getLowStockThreshold, DEFAULT_LOW_STOCK_THRESHOLD } from '@/lib/settings'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Card, CardContent } from '@/components/ui/card'
+import {
+  Dialog, DialogContent, DialogHeader, DialogTitle,
+} from '@/components/ui/dialog'
 import AddStockDialog from '@/components/inventory/AddStockDialog'
 
-function StatusBadge({ qty }) {
+function StatusBadge({ qty, threshold = DEFAULT_LOW_STOCK_THRESHOLD }) {
   if (qty === 0)
     return <Badge className="bg-red-500/20 text-red-400 border-red-500/30 hover:bg-red-500/20">Out of Stock</Badge>
-  if (qty <= 3)
+  if (qty <= threshold)
     return <Badge className="bg-yellow-500/20 text-yellow-400 border-yellow-500/30 hover:bg-yellow-500/20">Low Stock</Badge>
   return <Badge className="bg-green-500/20 text-green-400 border-green-500/30 hover:bg-green-500/20">In Stock</Badge>
+}
+
+// Tap-through list behind the Low Stock / Out of Stock cards
+function StockListDialog({ open, onOpenChange, title, items, emptyText, onPick }) {
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-md max-h-[80vh] overflow-y-auto p-6">
+        <DialogHeader>
+          <DialogTitle className="text-lg">{title}</DialogTitle>
+        </DialogHeader>
+        {items.length === 0 ? (
+          <p className="text-sm text-muted-foreground py-6 text-center">{emptyText}</p>
+        ) : (
+          <div className="space-y-1 mt-1">
+            {items.map((m) => (
+              <button
+                key={`${m.brand}|${m.model}`}
+                onClick={() => onPick(m)}
+                className="w-full flex items-center justify-between gap-3 px-3 py-2.5 rounded-lg hover:bg-muted/50 transition-colors text-left"
+              >
+                <span className="text-sm font-medium min-w-0 truncate">{m.brand} {m.model}</span>
+                <span className={`text-xs font-semibold shrink-0 ${m.qty === 0 ? 'text-red-400' : 'text-yellow-400'}`}>
+                  {m.qty === 0 ? 'out of stock' : `${m.qty} left`}
+                </span>
+              </button>
+            ))}
+          </div>
+        )}
+      </DialogContent>
+    </Dialog>
+  )
 }
 
 function SourceBadge({ source, count }) {
@@ -33,17 +68,21 @@ function SourceBadge({ source, count }) {
   return <Badge className="bg-slate-500/20 text-slate-400 border-slate-500/30 hover:bg-slate-500/20">Manual{suffix}</Badge>
 }
 
-function StatBox({ label, value, icon: Icon, color }) {
-  const colorMap = { default: 'text-muted-foreground', yellow: 'text-yellow-400', red: 'text-red-400', indigo: 'text-indigo-400' }
+function StatBox({ label, value, icon: Icon, color, hero = false, onClick }) {
+  const colorMap = { default: 'text-muted-foreground', yellow: 'text-yellow-400', red: 'text-red-400', indigo: 'text-indigo-400', blue: 'text-blue-400' }
   const iconColor = colorMap[color] ?? colorMap.default
+  const Tag = onClick ? 'button' : 'div'
   return (
-    <div className="rounded-xl border border-border bg-muted/20 p-4">
+    <Tag
+      onClick={onClick}
+      className={`rounded-xl border border-border bg-muted/20 p-4 text-left ${hero ? 'col-span-2 md:col-span-1 border-indigo-500/40' : ''} ${onClick ? 'cursor-pointer hover:border-indigo-500/60 transition-colors' : ''}`}
+    >
       <div className="flex items-center justify-between mb-2">
         <p className="text-xs text-muted-foreground uppercase tracking-wider">{label}</p>
-        <Icon className={`w-4 h-4 ${iconColor}`} />
+        <Icon className={`${hero ? 'w-5 h-5' : 'w-4 h-4'} ${iconColor}`} />
       </div>
-      <p className={`text-xl font-bold ${iconColor !== colorMap.default ? iconColor : ''}`}>{value}</p>
-    </div>
+      <p className={`${hero ? 'text-3xl' : 'text-xl'} font-bold ${iconColor !== colorMap.default ? iconColor : ''}`}>{value}</p>
+    </Tag>
   )
 }
 
@@ -60,10 +99,6 @@ function BrandCard({ b, onClick }) {
           <div className="flex justify-between">
             <span className="text-muted-foreground">Units in stock</span>
             <span className="font-semibold">{b.totalUnits.toLocaleString('en-IN')}</span>
-          </div>
-          <div className="flex justify-between">
-            <span className="text-muted-foreground">Stock value</span>
-            <span className="font-semibold">₹{b.inventoryValue.toLocaleString('en-IN')}</span>
           </div>
           <div className="flex justify-between">
             <span className="text-muted-foreground">Models</span>
@@ -105,6 +140,10 @@ export default function Inventory() {
   // Level 1
   const [brandSummary, setBrandSummary] = useState([])
   const [brandsLoading, setBrandsLoading] = useState(true)
+  const [threshold, setThreshold] = useState(DEFAULT_LOW_STOCK_THRESHOLD)
+  const [lowModels, setLowModels] = useState([])
+  const [outModels, setOutModels] = useState([])
+  const [stockList, setStockList] = useState(null) // 'low' | 'out' | null
 
   // Level 2
   const [selectedBrand, setSelectedBrand] = useState(null)
@@ -119,8 +158,12 @@ export default function Inventory() {
   const fetchBrandSummary = async () => {
     if (!tenantId) return
     setBrandsLoading(true)
-    const { data } = await getBrandSummary(tenantId)
+    const t = await getLowStockThreshold(tenantId)
+    setThreshold(t)
+    const { data, lowModels: low, outModels: out } = await getBrandSummary(tenantId, t)
     setBrandSummary(data ?? [])
+    setLowModels(low ?? [])
+    setOutModels(out ?? [])
     setBrandsLoading(false)
   }
 
@@ -213,10 +256,11 @@ export default function Inventory() {
     if (selectedBrand) fetchInventory()
   }
 
-  const totalUnits = brandSummary.reduce((s, b) => s + b.totalUnits, 0)
-  const totalValue = brandSummary.reduce((s, b) => s + b.inventoryValue, 0)
-  const totalLow   = brandSummary.reduce((s, b) => s + b.lowStockCount, 0)
-  const totalOut   = brandSummary.reduce((s, b) => s + b.outOfStockCount, 0)
+  // Stock only — no rupee values on this page. Money lives on owner surfaces.
+  const totalUnits   = brandSummary.reduce((s, b) => s + b.totalUnits, 0)
+  const totalLow     = brandSummary.reduce((s, b) => s + b.lowStockCount, 0)
+  const totalOut     = brandSummary.reduce((s, b) => s + b.outOfStockCount, 0)
+  const totalPending = brandSummary.reduce((s, b) => s + b.pendingCount, 0)
 
   return (
     <motion.div
@@ -330,7 +374,7 @@ export default function Inventory() {
                         </div>
                       </td>
                       <td className="px-4 py-3 text-center">
-                        <StatusBadge qty={group.totalQty} />
+                        <StatusBadge qty={group.totalQty} threshold={threshold} />
                       </td>
                       <td className="px-4 py-3 text-center text-muted-foreground">
                         <ChevronRight className="w-4 h-4 inline" />
@@ -385,7 +429,7 @@ export default function Inventory() {
                         )}
                       </div>
                       <div className="flex items-center gap-1.5 shrink-0">
-                        <StatusBadge qty={group.totalQty} />
+                        <StatusBadge qty={group.totalQty} threshold={threshold} />
                         <ChevronRight className="w-4 h-4 text-muted-foreground" />
                       </div>
                     </div>
@@ -432,10 +476,13 @@ export default function Inventory() {
           </div>
 
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-            <StatBox label="Total Units"     value={totalUnits.toLocaleString('en-IN')}       icon={Boxes}         color="indigo" />
-            <StatBox label="Stock Value"     value={`₹${totalValue.toLocaleString('en-IN')}`} icon={IndianRupee}   color="default" />
-            <StatBox label="Low Stock Items" value={totalLow} icon={AlertTriangle} color={totalLow > 0 ? 'yellow' : 'default'} />
-            <StatBox label="Out of Stock"    value={totalOut} icon={PackageX}      color={totalOut > 0 ? 'red'    : 'default'} />
+            <StatBox label="Units in Stock"   value={totalUnits.toLocaleString('en-IN')} icon={Boxes} color="indigo" hero />
+            <StatBox label="Pending Approval" value={totalPending} icon={Clock}     color={totalPending > 0 ? 'blue' : 'default'}
+              onClick={() => navigate('/pending-approvals')} />
+            <StatBox label="Low Stock"        value={totalLow} icon={AlertTriangle} color={totalLow > 0 ? 'yellow' : 'default'}
+              onClick={() => setStockList('low')} />
+            <StatBox label="Out of Stock"     value={totalOut} icon={PackageX}      color={totalOut > 0 ? 'red'    : 'default'}
+              onClick={() => setStockList('out')} />
           </div>
 
           {brandsLoading ? (
@@ -471,6 +518,18 @@ export default function Inventory() {
         tenantId={tenantId}
         products={products}
         onSuccess={handleSuccess}
+      />
+
+      <StockListDialog
+        open={stockList !== null}
+        onOpenChange={(open) => { if (!open) setStockList(null) }}
+        title={stockList === 'out' ? 'Out of Stock Models' : `Low Stock Models (≤ ${threshold} units)`}
+        items={stockList === 'out' ? outModels : lowModels}
+        emptyText={stockList === 'out' ? 'No model is out of stock.' : 'No model is running low.'}
+        onPick={(m) => {
+          setStockList(null)
+          navigate(`/inventory/${encodeURIComponent(m.brand)}/${encodeURIComponent(m.model)}`)
+        }}
       />
     </motion.div>
   )

@@ -2,13 +2,14 @@ import React, { useState, useEffect, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import {
-  ArrowLeft, Search, ChevronRight, Smartphone, Plus, X, Loader2, IndianRupee,
+  ArrowLeft, Search, ChevronRight, Smartphone, Plus, X, Loader2, IndianRupee, Pencil,
 } from 'lucide-react'
 import { useForm, Controller } from 'react-hook-form'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
 import { useAuth } from '@/context/AuthContext'
-import { getProducts, createProduct, setProductsActive } from '@/lib/products'
+import { getProducts, createCatalogEntry, updateCatalogEntry, setModelActive } from '@/lib/products'
+import { getTaxCategories } from '@/lib/taxCategories'
 import { getTenantUsers } from '@/lib/users'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -27,18 +28,28 @@ import {
 const norm = (s) => (s ?? '').trim().toLowerCase().replace(/\s+/g, ' ')
 const squash = (s) => norm(s).replace(/\s/g, '')
 
+// "smartphone · HSN 8517 · 18%" — how a tax category reads in the pickers
+const taxCategoryLabel = (tc) =>
+  [tc.name, tc.hsn_code && `HSN ${tc.hsn_code}`, `${Number(tc.gst_rate)}% GST`]
+    .filter(Boolean).join(' · ')
+
 // ── Add Model dialog ─────────────────────────────────────────────────────────
-function AddModelDialog({ open, onOpenChange, tenantId, products, defaultBrand, onSuccess }) {
+function AddModelDialog({ open, onOpenChange, tenantId, products, taxCategories, defaultBrand, onSuccess }) {
   const { currentUser } = useAuth()
-  const { register, handleSubmit, control, reset, formState: { errors, isSubmitting } } = useForm({
-    defaultValues: {
-      category: '', brand: defaultBrand ?? '', model: '', variant: '', color: '',
-      hsn_code: '', gst_rate: '18',
-    },
+  const { register, handleSubmit, control, reset, watch, formState: { errors, isSubmitting } } = useForm({
+    defaultValues: { tax_category_id: '', brand: defaultBrand ?? '', model: '', variant: '' },
   })
 
+  // Colors are chips, not a form field — Enter/comma adds one, × removes it
+  const [colors, setColors] = useState([])
+  const [colorInput, setColorInput] = useState('')
+
   useEffect(() => {
-    if (open) reset({ category: '', brand: defaultBrand ?? '', model: '', variant: '', color: '', hsn_code: '', gst_rate: '18' })
+    if (open) {
+      reset({ tax_category_id: '', brand: defaultBrand ?? '', model: '', variant: '' })
+      setColors([])
+      setColorInput('')
+    }
   }, [open, defaultBrand])
 
   const existingBrands = useMemo(
@@ -46,19 +57,47 @@ function AddModelDialog({ open, onOpenChange, tenantId, products, defaultBrand, 
     [products]
   )
 
-  const onSubmit = async (values) => {
-    // Duplicate guard: exact same brand+model+variant+color already in catalog
-    const exact = products.find((p) =>
-      norm(p.brand) === norm(values.brand) &&
-      norm(p.model) === norm(values.model) &&
-      norm(p.variant) === norm(values.variant) &&
-      norm(p.color) === norm(values.color)
-    )
-    if (exact) {
-      toast.error('This exact model (same variant and color) already exists in the catalog.')
-      return
+  // Suggest colors already used for this brand — keeps spellings consistent
+  const watchedBrand = watch('brand')
+  const colorSuggestions = useMemo(() => {
+    const b = norm(watchedBrand)
+    const seen = new Map()
+    for (const p of products) {
+      if (!p.color) continue
+      if (b && norm(p.brand) !== b) continue
+      seen.set(p.color.toLowerCase(), p.color)
     }
+    const chipped = new Set(colors.map((c) => c.toLowerCase()))
+    return [...seen.values()].filter((c) => !chipped.has(c.toLowerCase())).sort()
+  }, [products, watchedBrand, colors])
 
+  // Accepts "Black" or a pasted "Black, Cream, Violet"
+  const addColorChips = (raw) => {
+    const names = raw.split(',').map((s) => s.trim()).filter(Boolean)
+    if (names.length === 0) return
+    setColors((prev) => {
+      const next = [...prev]
+      for (const name of names) {
+        if (!next.some((c) => c.toLowerCase() === name.toLowerCase())) next.push(name)
+      }
+      return next
+    })
+    setColorInput('')
+  }
+
+  const handleColorKeyDown = (e) => {
+    if (e.key === 'Enter' || e.key === ',') {
+      e.preventDefault()
+      addColorChips(colorInput)
+    } else if (e.key === 'Backspace' && !colorInput && colors.length > 0) {
+      setColors((prev) => prev.slice(0, -1))
+    }
+  }
+
+  const removeColor = (name) =>
+    setColors((prev) => prev.filter((c) => c !== name))
+
+  const onSubmit = async (values) => {
     // Similar-name guard: same letters, different spacing/casing ("13C" vs "13 C")
     const similar = products.find((p) =>
       norm(p.brand) === norm(values.brand) &&
@@ -73,15 +112,19 @@ function AddModelDialog({ open, onOpenChange, tenantId, products, defaultBrand, 
       if (!ok) return
     }
 
-    const { error } = await createProduct({
+    // A color typed but not yet chipped still counts
+    const allColors = [...colors]
+    for (const name of colorInput.split(',').map((s) => s.trim()).filter(Boolean)) {
+      if (!allColors.some((c) => c.toLowerCase() === name.toLowerCase())) allColors.push(name)
+    }
+
+    const { data, error } = await createCatalogEntry({
       tenant_id: tenantId,
-      category: values.category,
+      tax_category_id: values.tax_category_id,
       brand: values.brand.trim(),
       model: values.model.trim(),
       variant: values.variant.trim() || null,
-      color: values.color.trim() || null,
-      hsn_code: values.hsn_code.trim() || null,
-      gst_rate: Number(values.gst_rate),
+      colors: allColors,
       created_by: currentUser?.id,
     })
     if (error) {
@@ -89,7 +132,28 @@ function AddModelDialog({ open, onOpenChange, tenantId, products, defaultBrand, 
       else toast.error(error.message ?? 'Failed to create model')
       return
     }
-    toast.success('Model added to catalog')
+
+    if (data.modelExisted && data.added === 0) {
+      toast.error(
+        allColors.length > 0
+          ? 'This model already has all of these colors — nothing new to add.'
+          : 'This model already exists in the catalog.'
+      )
+      return
+    }
+
+    if (data.modelExisted) {
+      toast.success(
+        `${data.added} color${data.added > 1 ? 's' : ''} added to the existing model` +
+        (data.skipped > 0 ? ` (${data.skipped} already existed)` : '')
+      )
+    } else {
+      toast.success(
+        allColors.length > 0
+          ? `Model added with ${data.added} color${data.added > 1 ? 's' : ''}`
+          : 'Model added to catalog'
+      )
+    }
     onSuccess()
     onOpenChange(false)
   }
@@ -105,20 +169,26 @@ function AddModelDialog({ open, onOpenChange, tenantId, products, defaultBrand, 
           <div className="space-y-1.5">
             <Label>Category</Label>
             <Controller
-              name="category"
+              name="tax_category_id"
               control={control}
               rules={{ required: 'Category is required' }}
               render={({ field }) => (
                 <Select onValueChange={field.onChange} value={field.value}>
                   <SelectTrigger><SelectValue placeholder="Select category…" /></SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="smartphone">Smartphone</SelectItem>
-                    <SelectItem value="accessory">Accessory</SelectItem>
+                    {taxCategories.map((tc) => (
+                      <SelectItem key={tc.id} value={tc.id} className="capitalize">
+                        {taxCategoryLabel(tc)}
+                      </SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
               )}
             />
-            {errors.category && <p className="text-red-400 text-xs">{errors.category.message}</p>}
+            {errors.tax_category_id && <p className="text-red-400 text-xs">{errors.tax_category_id.message}</p>}
+            <p className="text-xs text-muted-foreground">
+              GST rate and HSN come from the category — the owner maintains them in Settings.
+            </p>
           </div>
 
           <div className="grid grid-cols-2 gap-3">
@@ -145,25 +215,38 @@ function AddModelDialog({ open, onOpenChange, tenantId, products, defaultBrand, 
               <Label>Variant <span className="text-muted-foreground text-xs">(optional)</span></Label>
               <Input {...register('variant')} placeholder="8/256GB" />
             </div>
-            <div className="space-y-1.5">
-              <Label>Color <span className="text-muted-foreground text-xs">(optional)</span></Label>
-              <Input {...register('color')} placeholder="Midnight Black" />
-            </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-1.5">
-              <Label>HSN Code <span className="text-muted-foreground text-xs">(optional)</span></Label>
-              <Input {...register('hsn_code')} placeholder="8517" />
-            </div>
-            <div className="space-y-1.5">
-              <Label>GST Rate (%)</Label>
-              <Input
-                {...register('gst_rate', { required: 'Required', min: { value: 0, message: 'Must be ≥ 0' } })}
-                type="number" placeholder="18"
-              />
-              {errors.gst_rate && <p className="text-red-400 text-xs">{errors.gst_rate.message}</p>}
-            </div>
+          <div className="space-y-1.5 border-t border-border pt-3">
+            <Label>Colors <span className="text-muted-foreground text-xs">(optional — Enter or comma adds each)</span></Label>
+            {colors.length > 0 && (
+              <div className="flex flex-wrap gap-1.5 pb-1">
+                {colors.map((c) => (
+                  <span key={c}
+                    className="inline-flex items-center gap-1 text-xs px-2 py-1 rounded-full bg-muted/60 text-foreground">
+                    {c}
+                    <button type="button" onClick={() => removeColor(c)}
+                      className="text-muted-foreground hover:text-foreground" aria-label={`Remove ${c}`}>
+                      <X className="w-3 h-3" />
+                    </button>
+                  </span>
+                ))}
+              </div>
+            )}
+            <Input
+              value={colorInput}
+              onChange={(e) => setColorInput(e.target.value)}
+              onKeyDown={handleColorKeyDown}
+              onBlur={() => addColorChips(colorInput)}
+              placeholder={colors.length > 0 ? 'Add another color…' : 'Midnight Black'}
+              list="catalog-colors" autoComplete="off"
+            />
+            <datalist id="catalog-colors">
+              {colorSuggestions.map((c) => <option key={c} value={c} />)}
+            </datalist>
+            <p className="text-xs text-muted-foreground">
+              Each color becomes its own catalog entry under this model. Leave empty to create the model without colors.
+            </p>
           </div>
 
           <p className="text-xs text-muted-foreground border-t border-border pt-3">
@@ -184,6 +267,253 @@ function AddModelDialog({ open, onOpenChange, tenantId, products, defaultBrand, 
   )
 }
 
+// ── Edit Model dialog (owner-only) ───────────────────────────────────────────
+// Renames are safe by construction: stock, sales and price history all point
+// at the model's id, so they follow automatically. Bills reprint with the
+// corrected name. Colors in use by stock/purchases/sales cannot be removed.
+function EditModelDialog({ open, onOpenChange, tenantId, products, taxCategories, group, onSuccess }) {
+  const { currentUser } = useAuth()
+  const { register, handleSubmit, control, reset, watch, formState: { errors, isSubmitting } } = useForm({
+    defaultValues: { tax_category_id: '', brand: '', model: '', variant: '' },
+  })
+
+  // Existing colors keep their product row id; newly added ones have id: null
+  const [colorRows, setColorRows] = useState([])
+  const [removed, setRemoved] = useState([])
+  const [colorInput, setColorInput] = useState('')
+
+  useEffect(() => {
+    if (open && group) {
+      const sample = group.rows?.[0] ?? {}
+      reset({
+        tax_category_id: sample.tax_category_id ?? '',
+        brand: group.brand ?? '',
+        model: group.model ?? '',
+        variant: group.variant ?? '',
+      })
+      setColorRows(group.rows.filter((r) => r.color).map((r) => ({ id: r.id, color: r.color })))
+      setRemoved([])
+      setColorInput('')
+    }
+  }, [open, group])
+
+  const existingBrands = useMemo(
+    () => [...new Set(products.map((p) => p.brand).filter(Boolean))].sort(),
+    [products]
+  )
+
+  const watchedBrand = watch('brand')
+  const colorSuggestions = useMemo(() => {
+    const b = norm(watchedBrand)
+    const seen = new Map()
+    for (const p of products) {
+      if (!p.color) continue
+      if (b && norm(p.brand) !== b) continue
+      seen.set(p.color.toLowerCase(), p.color)
+    }
+    const chipped = new Set(colorRows.map((c) => c.color.toLowerCase()))
+    return [...seen.values()].filter((c) => !chipped.has(c.toLowerCase())).sort()
+  }, [products, watchedBrand, colorRows])
+
+  const addColorChips = (raw) => {
+    const names = raw.split(',').map((s) => s.trim()).filter(Boolean)
+    if (names.length === 0) return
+    setColorRows((prev) => {
+      const next = [...prev]
+      for (const name of names) {
+        if (!next.some((c) => c.color.toLowerCase() === name.toLowerCase())) next.push({ id: null, color: name })
+      }
+      return next
+    })
+    setColorInput('')
+  }
+
+  const handleColorKeyDown = (e) => {
+    if (e.key === 'Enter' || e.key === ',') {
+      e.preventDefault()
+      addColorChips(colorInput)
+    }
+  }
+
+  const removeColorChip = (row) => {
+    setColorRows((prev) => prev.filter((c) => c !== row))
+    if (row.id) setRemoved((prev) => [...prev, row])
+  }
+
+  const onSubmit = async (values) => {
+    if (!group) return
+
+    // Rename collision: another model already has this brand+name+variant
+    const clash = products.find((p) =>
+      p.model_id !== group.modelId &&
+      norm(p.brand) === norm(values.brand) &&
+      norm(p.model) === norm(values.model) &&
+      norm(p.variant) === norm(values.variant)
+    )
+    if (clash) {
+      toast.error('A model with this brand, name and variant already exists — merging duplicates is not supported yet.')
+      return
+    }
+
+    // Similar-name guard: same letters, different spacing/casing ("13C" vs "13 C")
+    const similar = products.find((p) =>
+      p.model_id !== group.modelId &&
+      norm(p.brand) === norm(values.brand) &&
+      squash(p.model) === squash(values.model) &&
+      norm(p.model) !== norm(values.model)
+    )
+    if (similar) {
+      const ok = window.confirm(
+        `A very similar model already exists: "${similar.brand} ${similar.model}".\n` +
+        `You typed "${values.model}". Keeping both will split stock and prices across duplicates.\n\nSave anyway?`
+      )
+      if (!ok) return
+    }
+
+    const allNewColors = colorRows.filter((r) => !r.id).map((r) => r.color)
+    for (const name of colorInput.split(',').map((s) => s.trim()).filter(Boolean)) {
+      if (!colorRows.some((c) => c.color.toLowerCase() === name.toLowerCase())) allNewColors.push(name)
+    }
+
+    const { data, error } = await updateCatalogEntry({
+      tenantId,
+      modelId: group.modelId,
+      fields: {
+        brand: values.brand.trim(),
+        name: values.model.trim(),
+        variant: values.variant.trim() || '',
+        tax_category_id: values.tax_category_id,
+      },
+      addColors: allNewColors,
+      removeProducts: removed,
+      createdBy: currentUser?.id,
+    })
+    if (error) {
+      if (error.code === '23505') toast.error('A model with this brand, name and variant already exists.')
+      else toast.error(error.message ?? 'Failed to update model')
+      return
+    }
+
+    if (data.blocked.length > 0) {
+      toast.warning(`Model updated — colors with stock or sales history were kept: ${data.blocked.join(', ')}`)
+    } else {
+      toast.success('Model updated')
+    }
+    onSuccess()
+    onOpenChange(false)
+  }
+
+  if (!group) return null
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto p-6" onInteractOutside={(e) => e.preventDefault()}>
+        <DialogHeader>
+          <DialogTitle className="text-lg">Edit Model</DialogTitle>
+        </DialogHeader>
+
+        <form onSubmit={handleSubmit(onSubmit)} className="space-y-4 mt-2">
+          <div className="space-y-1.5">
+            <Label>Category</Label>
+            <Controller
+              name="tax_category_id"
+              control={control}
+              rules={{ required: 'Category is required' }}
+              render={({ field }) => (
+                <Select onValueChange={field.onChange} value={field.value}>
+                  <SelectTrigger><SelectValue placeholder="Select category…" /></SelectTrigger>
+                  <SelectContent>
+                    {taxCategories.map((tc) => (
+                      <SelectItem key={tc.id} value={tc.id} className="capitalize">
+                        {taxCategoryLabel(tc)}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
+            />
+            {errors.tax_category_id && <p className="text-red-400 text-xs">{errors.tax_category_id.message}</p>}
+            <p className="text-xs text-muted-foreground">
+              GST rate and HSN come from the category — the owner maintains them in Settings.
+            </p>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1.5">
+              <Label>Brand</Label>
+              <Input
+                {...register('brand', { required: 'Required' })}
+                placeholder="Samsung" list="edit-catalog-brands" autoComplete="off"
+              />
+              <datalist id="edit-catalog-brands">
+                {existingBrands.map((b) => <option key={b} value={b} />)}
+              </datalist>
+              {errors.brand && <p className="text-red-400 text-xs">{errors.brand.message}</p>}
+            </div>
+            <div className="space-y-1.5">
+              <Label>Model</Label>
+              <Input {...register('model', { required: 'Required' })} placeholder="Galaxy S24" />
+              {errors.model && <p className="text-red-400 text-xs">{errors.model.message}</p>}
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1.5">
+              <Label>Variant <span className="text-muted-foreground text-xs">(optional)</span></Label>
+              <Input {...register('variant')} placeholder="8/256GB" />
+            </div>
+          </div>
+
+          <div className="space-y-1.5 border-t border-border pt-3">
+            <Label>Colors <span className="text-muted-foreground text-xs">(Enter or comma adds each)</span></Label>
+            {colorRows.length > 0 && (
+              <div className="flex flex-wrap gap-1.5 pb-1">
+                {colorRows.map((row) => (
+                  <span key={`${row.id ?? 'new'}-${row.color}`}
+                    className="inline-flex items-center gap-1 text-xs px-2 py-1 rounded-full bg-muted/60 text-foreground">
+                    {row.color}
+                    <button type="button" onClick={() => removeColorChip(row)}
+                      className="text-muted-foreground hover:text-foreground" aria-label={`Remove ${row.color}`}>
+                      <X className="w-3 h-3" />
+                    </button>
+                  </span>
+                ))}
+              </div>
+            )}
+            <Input
+              value={colorInput}
+              onChange={(e) => setColorInput(e.target.value)}
+              onKeyDown={handleColorKeyDown}
+              onBlur={() => addColorChips(colorInput)}
+              placeholder={colorRows.length > 0 ? 'Add another color…' : 'Midnight Black'}
+              list="edit-catalog-colors" autoComplete="off"
+            />
+            <datalist id="edit-catalog-colors">
+              {colorSuggestions.map((c) => <option key={c} value={c} />)}
+            </datalist>
+            <p className="text-xs text-muted-foreground">
+              Colors already used by stock, purchases or sales can't be removed — history points at them.
+            </p>
+          </div>
+
+          <p className="text-xs text-muted-foreground border-t border-border pt-3">
+            Renaming is safe: stock, sales and price history follow this model automatically,
+            and bills reprint with the corrected name.
+          </p>
+
+          <DialogFooter className="pt-2">
+            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
+            <Button type="submit" disabled={isSubmitting} className="bg-indigo-500 hover:bg-indigo-600 text-white">
+              {isSubmitting && <Loader2 className="w-4 h-4 animate-spin mr-2" />}
+              Save Changes
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
 // ── Main page ────────────────────────────────────────────────────────────────
 export default function Models() {
   const navigate = useNavigate()
@@ -192,21 +522,28 @@ export default function Models() {
   const isOwner = currentUser?.role === 'admin'
 
   const [products, setProducts] = useState([])
+  const [taxCategories, setTaxCategories] = useState([])
   const [userMap, setUserMap] = useState({})
   const [loading, setLoading] = useState(true)
   const [selectedBrand, setSelectedBrand] = useState(null)
   const [search, setSearch] = useState('')
   const [addOpen, setAddOpen] = useState(false)
+  const [editGroup, setEditGroup] = useState(null)
+  const [editOpen, setEditOpen] = useState(false)
   const [showInactive, setShowInactive] = useState(false)
+
+  const openEdit = (group) => { setEditGroup(group); setEditOpen(true) }
 
   const fetchAll = async () => {
     if (!tenantId) return
     setLoading(true)
-    const [prodRes, usersRes] = await Promise.all([
+    const [prodRes, usersRes, taxRes] = await Promise.all([
       getProducts(tenantId),
       getTenantUsers(tenantId),
+      getTaxCategories(tenantId),
     ])
     setProducts(prodRes.data ?? [])
+    setTaxCategories(taxRes.data ?? [])
     const map = {}
     for (const u of usersRes.data ?? []) map[u.id] = u.full_name
     setUserMap(map)
@@ -215,13 +552,13 @@ export default function Models() {
 
   useEffect(() => { fetchAll() }, [tenantId])
 
-  // Group products → one row per brand+model+variant, colors underneath
+  // Group products → one row per model (brand+model+variant), colors underneath
   const modelGroups = useMemo(() => {
     const map = new Map()
     for (const p of products) {
-      const key = `${p.brand}|${p.model}|${p.variant || ''}`
+      const key = p.model_id
       const cur = map.get(key) ?? {
-        key, brand: p.brand, model: p.model, variant: p.variant || '',
+        key, modelId: p.model_id, brand: p.brand, model: p.model, variant: p.variant || '',
         category: p.category, rows: [],
       }
       cur.rows.push(p)
@@ -264,8 +601,7 @@ export default function Models() {
   }, [modelGroups, selectedBrand, search, showInactive])
 
   const handleToggleActive = async (group, next) => {
-    const ids = group.rows.map((r) => r.id)
-    const { error } = await setProductsActive(tenantId, ids, next)
+    const { error } = await setModelActive(tenantId, group.modelId, next)
     if (error) { toast.error(error.message ?? 'Failed to update model'); return }
     toast.success(next ? 'Model reactivated' : 'Model marked discontinued — hidden from purchase pickers')
     fetchAll()
@@ -404,10 +740,18 @@ export default function Models() {
                       : '—'}
                     {g.createdBy && userMap[g.createdBy] && ` · by ${userMap[g.createdBy]}`}
                   </p>
-                  <Button variant="ghost" size="sm" className="h-8 text-xs text-muted-foreground hover:text-indigo-400 shrink-0 -mr-2"
-                    onClick={() => navigate('/prices')}>
-                    <IndianRupee className="w-3.5 h-3.5 mr-1" />Prices
-                  </Button>
+                  <div className="flex items-center shrink-0 -mr-2">
+                    {isOwner && (
+                      <Button variant="ghost" size="sm" className="h-8 text-xs text-muted-foreground hover:text-indigo-400"
+                        onClick={() => openEdit(g)}>
+                        <Pencil className="w-3.5 h-3.5 mr-1" />Edit
+                      </Button>
+                    )}
+                    <Button variant="ghost" size="sm" className="h-8 text-xs text-muted-foreground hover:text-indigo-400"
+                      onClick={() => navigate(`/prices?model=${g.modelId}`)}>
+                      <IndianRupee className="w-3.5 h-3.5 mr-1" />Prices
+                    </Button>
+                  </div>
                 </div>
               </CardContent>
             </Card>
@@ -466,9 +810,15 @@ export default function Models() {
                           disabled={!isOwner}
                         />
                       </td>
-                      <td className="px-4 py-2.5 text-right">
+                      <td className="px-4 py-2.5 text-right whitespace-nowrap">
+                        {isOwner && (
+                          <Button variant="ghost" size="sm" className="h-8 text-xs text-muted-foreground hover:text-indigo-400"
+                            onClick={() => openEdit(g)}>
+                            <Pencil className="w-3.5 h-3.5 mr-1" />Edit
+                          </Button>
+                        )}
                         <Button variant="ghost" size="sm" className="h-8 text-xs text-muted-foreground hover:text-indigo-400"
-                          onClick={() => navigate('/prices')}>
+                          onClick={() => navigate(`/prices?model=${g.modelId}`)}>
                           <IndianRupee className="w-3.5 h-3.5 mr-1" />Prices
                         </Button>
                       </td>
@@ -494,7 +844,18 @@ export default function Models() {
         onOpenChange={setAddOpen}
         tenantId={tenantId}
         products={products}
+        taxCategories={taxCategories}
         defaultBrand={selectedBrand}
+        onSuccess={fetchAll}
+      />
+
+      <EditModelDialog
+        open={editOpen}
+        onOpenChange={setEditOpen}
+        tenantId={tenantId}
+        products={products}
+        taxCategories={taxCategories}
+        group={editGroup}
         onSuccess={fetchAll}
       />
     </motion.div>

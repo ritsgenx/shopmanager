@@ -319,8 +319,8 @@ export default function Dashboard() {
       {/* KPI Cards */}
       {kpiCards.length > 0 && (
         <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
-          {kpiCards.map(card => (
-            <StatCard key={card.key} {...card} />
+          {kpiCards.map(({ key, ...card }) => (
+            <StatCard key={key} {...card} />
           ))}
         </div>
       )}

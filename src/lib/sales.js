@@ -1,5 +1,7 @@
 import { supabase } from './supabase'
 import { getCurrentPriceFor } from './modelPrices'
+import { getLowStockThreshold } from './settings'
+import { PRODUCT_EMBED, flattenProduct } from './products'
 
 // India financial year: April–March
 function getFinancialYear() {
@@ -77,14 +79,18 @@ export async function getCustomerSales(tenantId, customerId) {
       cgst_amount,
       sale_items (
         id, quantity, unit_price,
-        products ( brand, model, variant, color )
+        ${PRODUCT_EMBED}
       ),
       users!employee_id ( full_name )
     `)
     .eq('tenant_id', tenantId)
     .eq('customer_id', customerId)
     .order('sale_date', { ascending: false })
-  return { data: data ?? [], error }
+  const sales = (data ?? []).map((s) => ({
+    ...s,
+    sale_items: (s.sale_items ?? []).map((i) => ({ ...i, products: flattenProduct(i.products) })),
+  }))
+  return { data: sales, error }
 }
 
 export async function getSaleById(tenantId, id) {
@@ -95,17 +101,21 @@ export async function getSaleById(tenantId, id) {
       customers ( id, full_name, company_name, customer_type, phone, email, address, city, state, pincode, gstin ),
       sale_items (
         *,
-        products ( brand, model, variant, color, category, hsn_code, gst_rate )
+        ${PRODUCT_EMBED}
       )
     `)
     .eq('tenant_id', tenantId)
     .eq('id', id)
     .single()
+  if (data) {
+    data.sale_items = (data.sale_items ?? []).map((i) => ({ ...i, products: flattenProduct(i.products) }))
+  }
   return { data, error }
 }
 
 export async function createSale(headerData, lineItems, { customer, tenant }) {
   const tenantId = tenant.id
+  const lowThreshold = await getLowStockThreshold(tenantId)
 
   // 1. Generate invoice number
   const invoiceNumber = await generateInvoiceNumber(tenantId)
@@ -126,7 +136,7 @@ export async function createSale(headerData, lineItems, { customer, tenant }) {
   for (const item of lineItems) {
     if (item.stock_source === 'official') {
       const p = item.products ?? {}
-      const { data: price } = await getCurrentPriceFor(tenantId, p.brand, p.model, p.variant)
+      const { data: price } = await getCurrentPriceFor(tenantId, p.model_id)
       const basis = financeInvolved ? price?.finance_price : price?.oc_price
       if (basis == null) {
         const name = [p.brand, p.model, p.variant].filter(Boolean).join(' ')
@@ -146,19 +156,24 @@ export async function createSale(headerData, lineItems, { customer, tenant }) {
     }
   }
 
-  // 3. Process line items with GST split
+  // 3. Process line items with GST split.
+  // Prices are GST-INCLUSIVE — the quoted price is the money collected, for
+  // B2C and B2B alike. The taxable value is derived backwards (× 100/(100+r))
+  // and the last paisa lands in SGST/IGST so every line re-sums exactly.
   const processedItems = costedItems.map((item) => {
     const lineTotal = item.unit_price * item.quantity
     const disc = item.discount_amount || 0
-    const taxable = lineTotal - disc
-    const gstAmt = (taxable * (item.gst_rate || 0)) / 100
+    const gross = Math.round((lineTotal - disc) * 100) / 100 // money collected for this line
+    const rate = item.gst_rate || 0
+    const taxable = Math.round(((gross * 100) / (100 + rate)) * 100) / 100
+    const gstAmt = Math.round((gross - taxable) * 100) / 100
 
     let cgst = 0, sgst = 0, igst = 0
     if (sameState) {
       cgst = Math.round((gstAmt / 2) * 100) / 100
       sgst = Math.round((gstAmt - cgst) * 100) / 100
     } else {
-      igst = Math.round(gstAmt * 100) / 100
+      igst = gstAmt
     }
 
     return {
@@ -167,19 +182,19 @@ export async function createSale(headerData, lineItems, { customer, tenant }) {
       cgst_amount: cgst,
       sgst_amount: sgst,
       igst_amount: igst,
-      total_amount: Math.round((taxable + gstAmt) * 100) / 100,
+      total_amount: gross,
     }
   })
 
-  // 4. Compute header totals
+  // 4. Compute header totals — grand total is exactly what was quoted
   const subtotal = processedItems.reduce((s, i) => s + i.unit_price * i.quantity, 0)
   const discountTotal = processedItems.reduce((s, i) => s + (i.discount_amount || 0), 0)
-  const taxableAmount = subtotal - discountTotal
+  const taxableAmount = processedItems.reduce((s, i) => s + i.taxable_amount, 0)
   const cgstTotal = processedItems.reduce((s, i) => s + i.cgst_amount, 0)
   const sgstTotal = processedItems.reduce((s, i) => s + i.sgst_amount, 0)
   const igstTotal = processedItems.reduce((s, i) => s + i.igst_amount, 0)
   const totalGst = cgstTotal + sgstTotal + igstTotal
-  const grandTotal = Math.round((taxableAmount + totalGst) * 100) / 100
+  const grandTotal = Math.round(processedItems.reduce((s, i) => s + i.total_amount, 0) * 100) / 100
 
   // 5. Insert sale header
   const { data: sale, error: saleError } = await supabase
@@ -247,7 +262,7 @@ export async function createSale(headerData, lineItems, { customer, tenant }) {
       const newRemaining = inv.quantity - newSold
       let newStatus = 'in_stock'
       if (newRemaining <= 0) newStatus = 'sold'
-      else if (newRemaining <= 5) newStatus = 'low_stock'
+      else if (newRemaining <= lowThreshold) newStatus = 'low_stock'
 
       await supabase
         .from('inventory')
@@ -292,6 +307,7 @@ export async function createSale(headerData, lineItems, { customer, tenant }) {
 export async function deleteSale(tenantId, id) {
   // Reverse inventory and customer stats before deleting
   const { data: sale } = await getSaleById(tenantId, id)
+  const lowThreshold = await getLowStockThreshold(tenantId)
 
   if (sale) {
     for (const item of sale.sale_items ?? []) {
@@ -307,7 +323,7 @@ export async function deleteSale(tenantId, id) {
         const newRemaining = inv.quantity - newSold
         let newStatus = 'in_stock'
         if (newRemaining <= 0) newStatus = 'sold'
-        else if (newRemaining <= 5) newStatus = 'low_stock'
+        else if (newRemaining <= lowThreshold) newStatus = 'low_stock'
 
         await supabase
           .from('inventory')

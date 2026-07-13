@@ -1,21 +1,49 @@
 import { supabase } from './supabase'
+import { PRODUCT_EMBED, flattenProduct } from './products'
 
-export async function getBrandSummary(tenantId) {
+// Inventory rows come back with the products embed nested through models —
+// flatten each so pages keep reading item.products.brand / .model / etc.
+const withFlatProducts = (rows) =>
+  (rows ?? []).map((r) => ({ ...r, products: flattenProduct(r.products) }))
+
+// Resolve product ids for a brand (and optionally model name / search term)
+// through the models table, since brand/model now live there.
+async function getProductIdsForModels(tenantId, { brand, model, searchTerm } = {}) {
+  let query = supabase.from('models').select('id').eq('tenant_id', tenantId)
+  if (brand) query = query.eq('brand', brand)
+  if (model) query = query.eq('name', model)
+  if (searchTerm) query = query.or(`brand.ilike.%${searchTerm}%,name.ilike.%${searchTerm}%`)
+  const { data: mods } = await query
+  const modelIds = mods?.map((m) => m.id) ?? []
+  if (modelIds.length === 0) return []
+
+  const { data: prods } = await supabase
+    .from('products')
+    .select('id')
+    .eq('tenant_id', tenantId)
+    .in('model_id', modelIds)
+  return prods?.map((p) => p.id) ?? []
+}
+
+// threshold: units at or below which a model counts as low stock (see
+// getLowStockThreshold in settings.js — the app-wide single definition).
+// Also returns lowModels/outModels detail lists for the tappable stat cards.
+export async function getBrandSummary(tenantId, threshold = 3) {
   const { data, error } = await supabase
     .from('inventory')
-    .select('quantity_remaining, purchase_price, stock_source, approval_status, products(brand, model)')
+    .select('quantity_remaining, purchase_price, stock_source, approval_status, products(models(brand, name))')
     .eq('tenant_id', tenantId)
     .limit(10000)
 
-  if (error) return { data: [], error }
+  if (error) return { data: [], lowModels: [], outModels: [], error }
 
   // First pass: accumulate totals per brand and per model
   const brands = {}
   const modelTotals = {}  // key: "brand|model" -> qty
 
   for (const item of data ?? []) {
-    const brand = item.products?.brand ?? 'Unknown'
-    const model = item.products?.model ?? 'Unknown'
+    const brand = item.products?.models?.brand ?? 'Unknown'
+    const model = item.products?.models?.name ?? 'Unknown'
     if (!brands[brand]) {
       brands[brand] = {
         brand,
@@ -46,51 +74,56 @@ export async function getBrandSummary(tenantId) {
   }
 
   // Second pass: count low stock and out-of-stock at model level
+  const lowModels = []
+  const outModels = []
   for (const [mk, qty] of Object.entries(modelTotals)) {
-    const brand = mk.slice(0, mk.indexOf('|'))
+    const sep = mk.indexOf('|')
+    const brand = mk.slice(0, sep)
+    const model = mk.slice(sep + 1)
     const b = brands[brand]
     if (!b) continue
-    if (qty === 0) b.outOfStockCount++
-    else if (qty <= 3) b.lowStockCount++
+    if (qty === 0) {
+      b.outOfStockCount++
+      outModels.push({ brand, model, qty })
+    } else if (qty <= threshold) {
+      b.lowStockCount++
+      lowModels.push({ brand, model, qty })
+    }
   }
+  lowModels.sort((a, b) => a.qty - b.qty || a.brand.localeCompare(b.brand))
+  outModels.sort((a, b) => a.brand.localeCompare(b.brand) || a.model.localeCompare(b.model))
 
   const result = Object.values(brands)
     .map(b => ({ ...b, modelsInStock: b.modelsInStock.size }))
     .sort((a, b) => b.totalUnits - a.totalUnits)
 
-  return { data: result, error: null }
+  return { data: result, lowModels, outModels, error: null }
 }
 
 export async function getInventoryForModel(tenantId, brand, model) {
-  const { data: prods } = await supabase
-    .from('products').select('id')
-    .eq('tenant_id', tenantId).eq('brand', brand).eq('model', model)
-  const productIds = prods?.map(p => p.id) ?? []
+  const productIds = await getProductIdsForModels(tenantId, { brand, model })
   if (productIds.length === 0) return { data: [], error: null }
 
   const { data, error } = await supabase
     .from('inventory')
-    .select(`*, products ( brand, model, variant, color, category, hsn_code, gst_rate ), purchases ( bill_number, purchase_type )`)
+    .select(`*, ${PRODUCT_EMBED}, purchases ( bill_number, purchase_type )`)
     .eq('tenant_id', tenantId)
     .in('product_id', productIds)
     .order('created_at', { ascending: false })
-  return { data: data ?? [], error }
+  return { data: withFlatProducts(data), error }
 }
 
 export async function getInventoryForBrand(tenantId, brand) {
-  const { data: prods } = await supabase
-    .from('products').select('id')
-    .eq('tenant_id', tenantId).eq('brand', brand)
-  const productIds = prods?.map(p => p.id) ?? []
+  const productIds = await getProductIdsForModels(tenantId, { brand })
   if (productIds.length === 0) return { data: [], error: null }
 
   const { data, error } = await supabase
     .from('inventory')
-    .select(`*, products ( brand, model, variant, color, category, hsn_code, gst_rate )`)
+    .select(`*, ${PRODUCT_EMBED}`)
     .eq('tenant_id', tenantId)
     .in('product_id', productIds)
     .order('created_at', { ascending: false })
-  return { data: data ?? [], error }
+  return { data: withFlatProducts(data), error }
 }
 
 export async function getInventory(tenantId, { searchTerm, brand, page = 1, pageSize = 50 } = {}) {
@@ -104,18 +137,11 @@ export async function getInventory(tenantId, { searchTerm, brand, page = 1, page
     let searchIds = null
 
     if (brand) {
-      const { data: prods } = await supabase
-        .from('products').select('id')
-        .eq('tenant_id', tenantId).eq('brand', brand)
-      brandIds = prods?.map(p => p.id) ?? []
+      brandIds = await getProductIdsForModels(tenantId, { brand })
     }
 
     if (searchTerm?.trim()) {
-      const { data: prods } = await supabase
-        .from('products').select('id')
-        .eq('tenant_id', tenantId)
-        .or(`brand.ilike.%${searchTerm}%,model.ilike.%${searchTerm}%`)
-      searchIds = prods?.map(p => p.id) ?? []
+      searchIds = await getProductIdsForModels(tenantId, { searchTerm: searchTerm.trim() })
     }
 
     if (brandIds !== null && searchIds !== null) {
@@ -129,7 +155,7 @@ export async function getInventory(tenantId, { searchTerm, brand, page = 1, page
 
   let query = supabase
     .from('inventory')
-    .select(`*, products ( brand, model, variant, color, category, hsn_code, gst_rate )`, { count: 'exact' })
+    .select(`*, ${PRODUCT_EMBED}`, { count: 'exact' })
     .eq('tenant_id', tenantId)
     .order('created_at', { ascending: false })
     .range(from, to)
@@ -137,7 +163,7 @@ export async function getInventory(tenantId, { searchTerm, brand, page = 1, page
   if (productIds !== null) query = query.in('product_id', productIds)
 
   const { data, error, count } = await query
-  return { data: data ?? [], error, count: count ?? 0 }
+  return { data: withFlatProducts(data), error, count: count ?? 0 }
 }
 
 export async function getImeisByPurchase(tenantId, purchaseId, productId) {
@@ -187,25 +213,27 @@ export async function getProductByImei(tenantId, imei) {
     .select(`
       id, imei_number, purchase_price, selling_price, status,
       approval_status, stock_source, purchase_id, product_id,
-      products ( brand, model, variant, color, category, gst_rate, hsn_code )
+      ${PRODUCT_EMBED}
     `)
     .eq('tenant_id', tenantId)
     .eq('imei_number', imei)
     .limit(1)
     .maybeSingle()
+  if (data) return { data: { ...data, products: flattenProduct(data.products) }, error }
   return { data, error }
 }
 
 export async function getPendingApprovals(tenantId) {
-  const { data: items, error } = await supabase
+  const { data: rawItems, error } = await supabase
     .from('inventory')
-    .select(`*, products ( brand, model, variant, color, category )`)
+    .select(`*, ${PRODUCT_EMBED}`)
     .eq('tenant_id', tenantId)
     .eq('approval_status', 'pending')
     .order('created_at', { ascending: false })
 
   if (error) return { data: [], error }
-  if (!items?.length) return { data: [], error: null }
+  const items = withFlatProducts(rawItems)
+  if (!items.length) return { data: [], error: null }
 
   const userIds = [...new Set(items.map(i => i.submitted_by).filter(Boolean))]
   let userMap = {}

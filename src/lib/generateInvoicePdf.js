@@ -92,7 +92,7 @@ export function generateInvoicePdf({ sale, saleItems, customer, tenant, sameStat
     desc:   { x: M + 8,  w: 60, h: 'Description', a: 'left' },
     hsn:    { x: M + 68, w: 18, h: 'HSN',     a: 'center' },
     qty:    { x: M + 86, w: 12, h: 'Qty',     a: 'center' },
-    rate:   { x: M + 98, w: 27, h: 'Rate',    a: 'right' },
+    rate:   { x: M + 98, w: 27, h: 'Rate (incl. GST)', a: 'right' },
     gst:    { x: M + 125,w: 13, h: 'GST%',   a: 'center' },
     amount: { x: M + 138,w: 42, h: 'Amount',  a: 'right' },
   }
@@ -174,9 +174,9 @@ export function generateInvoicePdf({ sale, saleItems, customer, tenant, sameStat
     y += 6
   }
 
-  addRow('Subtotal:', fmtAmt(sale.subtotal))
+  addRow('Subtotal (incl. GST):', fmtAmt(sale.subtotal))
   if ((sale.discount_amount || 0) > 0) addRow('Discount:', '-' + fmtAmt(sale.discount_amount))
-  addRow('Taxable Amount:', fmtAmt(sale.taxable_amount))
+  addRow('Taxable Value:', fmtAmt(sale.taxable_amount))
 
   if (sameState) {
     addRow('CGST:', fmtAmt(sale.cgst_amount))

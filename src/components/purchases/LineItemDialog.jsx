@@ -1,42 +1,19 @@
-﻿import React, { useState, useEffect } from 'react'
+import React, { useEffect } from 'react'
 import { useForm, Controller } from 'react-hook-form'
-import { Loader2 } from 'lucide-react'
-import { toast } from 'sonner'
-import { cn } from '@/lib/utils'
-import { createProduct } from '@/lib/products'
-import { useAuth } from '@/context/AuthContext'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from '@/components/ui/dialog'
-import {
-  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
-} from '@/components/ui/select'
 import ProductPicker from '@/components/ProductPicker'
 
 export default function LineItemDialog({ open, onOpenChange, tenantId, products, onAdd }) {
-  const { currentUser } = useAuth()
-  const [mode, setMode] = useState('existing')
-
-  const formA = useForm({ defaultValues: { product_id: '' } })
-  const formB = useForm({
-    defaultValues: {
-      category: '', brand: '', model: '', variant: '',
-      color: '', hsn_code: '', gst_rate: '18',
-    },
-  })
+  const form = useForm({ defaultValues: { product_id: '' } })
 
   useEffect(() => {
-    if (!open) {
-      formA.reset()
-      formB.reset({ gst_rate: '18' })
-      setMode('existing')
-    }
+    if (!open) form.reset()
   }, [open])
 
-  const handleSelectExisting = (values) => {
+  const handleSelect = (values) => {
     const product = products.find((p) => p.id === values.product_id)
     if (!product) return
     onAdd({
@@ -48,155 +25,38 @@ export default function LineItemDialog({ open, onOpenChange, tenantId, products,
     onOpenChange(false)
   }
 
-  const handleCreateNew = async (values) => {
-    const { data: product, error } = await createProduct({
-      tenant_id: tenantId,
-      category: values.category,
-      brand: values.brand,
-      model: values.model,
-      variant: values.variant || null,
-      color: values.color || null,
-      hsn_code: values.hsn_code || null,
-      gst_rate: Number(values.gst_rate),
-      created_by: currentUser?.id,
-    })
-    if (error) {
-      if (error.code === '23505') {
-        toast.error('Product already exists — switch to "Existing Product" tab.')
-      } else {
-        toast.error(error.message ?? 'Failed to create product')
-      }
-      return
-    }
-    onAdd({
-      product_id: product.id,
-      product_name: [values.brand, values.model, values.variant && `(${values.variant})`].filter(Boolean).join(' '),
-      gst_rate: Number(values.gst_rate),
-      category: values.category,
-    })
-    onOpenChange(false)
-  }
-
-  const errA = formA.formState.errors
-  const errB = formB.formState.errors
-
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="bg-slate-800 border-slate-700 text-white max-w-md max-h-[90vh] overflow-y-auto p-6" onInteractOutside={(e) => e.preventDefault()}>
+      <DialogContent className="bg-slate-800 border-slate-700 text-white max-w-md p-6" onInteractOutside={(e) => e.preventDefault()}>
         <DialogHeader>
-          <DialogTitle className="text-white">Select Product</DialogTitle>
+          <DialogTitle className="text-white text-lg">Select Product</DialogTitle>
+          <p className="text-sm text-slate-400">
+            Search the catalog and pick a model to add to this purchase.
+          </p>
         </DialogHeader>
 
-        <div className="flex rounded-lg border border-slate-600 bg-slate-900 p-1">
-          {['existing', 'new'].map((m) => (
-            <button
-              key={m}
-              type="button"
-              onClick={() => { setMode(m); formA.reset(); formB.reset({ gst_rate: '18' }) }}
-              className={cn(
-                'flex-1 py-1.5 text-sm rounded transition-colors',
-                mode === m ? 'bg-indigo-500 text-white' : 'text-slate-400 hover:text-white'
-              )}
-            >
-              {m === 'existing' ? 'Existing Product' : 'New Product'}
-            </button>
-          ))}
-        </div>
-
-        {mode === 'existing' && (
-          <form onSubmit={formA.handleSubmit(handleSelectExisting)} className="space-y-4 mt-2">
-            <div className="space-y-1.5">
-              <Label className="text-slate-300">Product</Label>
-              <Controller
-                name="product_id"
-                control={formA.control}
-                rules={{ required: 'Please select a product' }}
-                render={({ field, fieldState }) => (
-                  <ProductPicker
-                    products={products.filter((p) => p.is_active !== false)}
-                    value={field.value}
-                    onChange={field.onChange}
-                    tenantId={tenantId}
-                    error={fieldState.error?.message}
-                  />
-                )}
+        <form onSubmit={form.handleSubmit(handleSelect)} className="space-y-4 mt-1">
+          <Controller
+            name="product_id"
+            control={form.control}
+            rules={{ required: 'Please select a product' }}
+            render={({ field, fieldState }) => (
+              <ProductPicker
+                inline
+                products={products.filter((p) => p.is_active !== false)}
+                value={field.value}
+                onChange={field.onChange}
+                tenantId={tenantId}
+                error={fieldState.error?.message}
               />
-            </div>
-            <DialogFooter>
-              <Button type="button" variant="outline" onClick={() => onOpenChange(false)} className="border-slate-600 text-slate-300 hover:bg-slate-700">Cancel</Button>
-              <Button type="submit" className="bg-indigo-500 hover:bg-indigo-600 text-white">Add Item</Button>
-            </DialogFooter>
-          </form>
-        )}
-
-        {mode === 'new' && (
-          <form onSubmit={formB.handleSubmit(handleCreateNew)} className="space-y-4 mt-2">
-            <div className="space-y-1.5">
-              <Label className="text-slate-300">Category</Label>
-              <Controller
-                name="category"
-                control={formB.control}
-                rules={{ required: 'Required' }}
-                render={({ field }) => (
-                  <Select onValueChange={field.onChange} value={field.value}>
-                    <SelectTrigger className="bg-slate-700 border-slate-600 text-white">
-                      <SelectValue placeholder="Select category…" />
-                    </SelectTrigger>
-                    <SelectContent className="bg-slate-800 border-slate-600">
-                      <SelectItem value="smartphone" className="text-white focus:bg-slate-700 focus:text-white">Smartphone</SelectItem>
-                      <SelectItem value="accessory" className="text-white focus:bg-slate-700 focus:text-white">Accessory</SelectItem>
-                    </SelectContent>
-                  </Select>
-                )}
-              />
-              {errB.category && <p className="text-red-400 text-xs">{errB.category.message}</p>}
-            </div>
-
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1.5">
-                <Label className="text-slate-300">Brand</Label>
-                <Input {...formB.register('brand', { required: 'Required' })} placeholder="Samsung" className="bg-slate-700 border-slate-600 text-white placeholder:text-slate-500" />
-                {errB.brand && <p className="text-red-400 text-xs">{errB.brand.message}</p>}
-              </div>
-              <div className="space-y-1.5">
-                <Label className="text-slate-300">Model</Label>
-                <Input {...formB.register('model', { required: 'Required' })} placeholder="Galaxy S24" className="bg-slate-700 border-slate-600 text-white placeholder:text-slate-500" />
-                {errB.model && <p className="text-red-400 text-xs">{errB.model.message}</p>}
-              </div>
-            </div>
-
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1.5">
-                <Label className="text-slate-300">Variant <span className="text-slate-500 text-xs">(opt)</span></Label>
-                <Input {...formB.register('variant')} placeholder="256GB" className="bg-slate-700 border-slate-600 text-white placeholder:text-slate-500" />
-              </div>
-              <div className="space-y-1.5">
-                <Label className="text-slate-300">Color <span className="text-slate-500 text-xs">(opt)</span></Label>
-                <Input {...formB.register('color')} placeholder="Black" className="bg-slate-700 border-slate-600 text-white placeholder:text-slate-500" />
-              </div>
-            </div>
-
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1.5">
-                <Label className="text-slate-300">HSN <span className="text-slate-500 text-xs">(opt)</span></Label>
-                <Input {...formB.register('hsn_code')} placeholder="8517" className="bg-slate-700 border-slate-600 text-white placeholder:text-slate-500" />
-              </div>
-              <div className="space-y-1.5">
-                <Label className="text-slate-300">GST Rate (%)</Label>
-                <Input {...formB.register('gst_rate', { required: 'Required', min: { value: 0, message: '≥ 0' } })} type="number" className="bg-slate-700 border-slate-600 text-white" />
-                {errB.gst_rate && <p className="text-red-400 text-xs">{errB.gst_rate.message}</p>}
-              </div>
-            </div>
-
-            <DialogFooter>
-              <Button type="button" variant="outline" onClick={() => onOpenChange(false)} className="border-slate-600 text-slate-300 hover:bg-slate-700">Cancel</Button>
-              <Button type="submit" disabled={formB.formState.isSubmitting} className="bg-indigo-500 hover:bg-indigo-600 text-white">
-                {formB.formState.isSubmitting && <Loader2 className="w-4 h-4 animate-spin mr-2" />}
-                Create &amp; Add
-              </Button>
-            </DialogFooter>
-          </form>
-        )}
+            )}
+          />
+          <p className="text-xs text-slate-500">Model not listed? Add it from the Models page first.</p>
+          <DialogFooter className="pt-1">
+            <Button type="button" variant="outline" onClick={() => onOpenChange(false)} className="border-slate-600 text-slate-300 hover:bg-slate-700">Cancel</Button>
+            <Button type="submit" className="bg-indigo-500 hover:bg-indigo-600 text-white">Add Item</Button>
+          </DialogFooter>
+        </form>
       </DialogContent>
     </Dialog>
   )

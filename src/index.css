@@ -78,3 +78,22 @@
     font-feature-settings: "rlig" 1, "calt" 1;
   }
 }
+
+/* Slim, unobtrusive scrollbar for lists inside dialogs/popovers */
+.thin-scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: hsl(215 20% 45% / 0.5) transparent;
+}
+.thin-scrollbar::-webkit-scrollbar {
+  width: 6px;
+}
+.thin-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+.thin-scrollbar::-webkit-scrollbar-thumb {
+  background: hsl(215 20% 45% / 0.5);
+  border-radius: 9999px;
+}
+.thin-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: hsl(215 20% 55% / 0.7);
+}

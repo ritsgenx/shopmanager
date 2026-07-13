@@ -1,4 +1,5 @@
 import { supabase } from './supabase'
+import { PRODUCT_EMBED, flattenProduct } from './products'
 
 const COMMISSION_RATE = 0.20
 
@@ -97,7 +98,7 @@ export async function getEmployeeSalesBreakdown(tenantId, employeeId, month) {
       id, invoice_number, sale_date, grand_total,
       sale_items (
         id, quantity, unit_price, discount_amount, cost_basis, cost_source,
-        products ( brand, model, variant, color ),
+        ${PRODUCT_EMBED},
         inventory ( purchase_price )
       )
     `)
@@ -122,7 +123,7 @@ export async function getEmployeeSalesBreakdown(tenantId, employeeId, month) {
       const profit = revenue - cost
       const commission = parseFloat((Math.max(0, profit) * COMMISSION_RATE).toFixed(2))
       saleProfit += profit
-      return { ...item, purchase_price: purchasePrice, profit: parseFloat(profit.toFixed(2)), commission }
+      return { ...item, products: flattenProduct(item.products), purchase_price: purchasePrice, profit: parseFloat(profit.toFixed(2)), commission }
     })
     const saleCommission = parseFloat((Math.max(0, saleProfit) * COMMISSION_RATE).toFixed(2))
     grandProfit += saleProfit

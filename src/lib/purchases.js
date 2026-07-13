@@ -1,5 +1,6 @@
 import { supabase } from './supabase'
 import { createInventory } from './inventory'
+import { PRODUCT_EMBED, flattenProduct } from './products'
 
 export async function getPurchases(tenantId, purchaseType = null) {
   let query = supabase
@@ -21,12 +22,15 @@ export async function getPurchaseById(tenantId, id) {
       *,
       purchase_items (
         *,
-        products ( brand, model, variant, color, gst_rate )
+        ${PRODUCT_EMBED}
       )
     `)
     .eq('tenant_id', tenantId)
     .eq('id', id)
     .single()
+  if (data) {
+    data.purchase_items = (data.purchase_items ?? []).map((i) => ({ ...i, products: flattenProduct(i.products) }))
+  }
   return { data, error }
 }
 

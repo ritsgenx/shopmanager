@@ -1,4 +1,5 @@
 import { supabase } from './supabase'
+import { getLowStockThreshold } from './settings'
 
 function todayDate() {
   return new Date().toISOString().split('T')[0]
@@ -83,15 +84,38 @@ export async function getRevenueChart(tenantId) {
   }))
 }
 
+// Model-level, computed live from remaining quantities against the tenant's
+// low-stock threshold — the same rule the Inventory page uses, so the two
+// screens can never disagree. Discontinued models are excluded.
 export async function getLowStockItems(tenantId, limit = 8) {
+  const threshold = await getLowStockThreshold(tenantId)
   const { data } = await supabase
     .from('inventory')
-    .select('id, quantity, quantity_sold, status, products(brand, model, variant, color)')
+    .select('quantity_remaining, products ( model_id, models ( brand, name, variant, is_active ) )')
     .eq('tenant_id', tenantId)
-    .in('status', ['low_stock', 'sold'])
-    .order('status', { ascending: true })
-    .limit(limit)
-  return data ?? []
+    .limit(10000)
+
+  const byModel = new Map()
+  for (const row of data ?? []) {
+    const p = row.products
+    if (!p?.model_id || p.models?.is_active === false) continue
+    const cur = byModel.get(p.model_id) ?? { id: p.model_id, qty: 0, m: p.models ?? {} }
+    cur.qty += row.quantity_remaining ?? 0
+    byModel.set(p.model_id, cur)
+  }
+
+  return [...byModel.values()]
+    .filter((x) => x.qty <= threshold)
+    .sort((a, b) => a.qty - b.qty)
+    .slice(0, limit)
+    .map((x) => ({
+      // shape matches what the dashboard widget already renders
+      id: x.id,
+      quantity: x.qty,
+      quantity_sold: 0,
+      status: x.qty === 0 ? 'sold' : 'low_stock',
+      products: { brand: x.m.brand, model: x.m.name, variant: x.m.variant || null, color: null },
+    }))
 }
 
 export async function getEmployeeLeaderboard(tenantId) {

@@ -6,7 +6,7 @@ import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
 import { useAuth } from '@/context/AuthContext'
 import { getInventory, getProductByImei } from '@/lib/inventory'
-import { getCurrentPrices, priceKey } from '@/lib/modelPrices'
+import { getCurrentPrices } from '@/lib/modelPrices'
 import { getCustomerByPhone, createCustomer } from '@/lib/customers'
 import { getTenantUsers } from '@/lib/users'
 import { createSale } from '@/lib/sales'
@@ -303,19 +303,21 @@ export default function NewSale() {
     return selectedCustomer.state.trim().toLowerCase() === currentTenant.state.trim().toLowerCase()
   }, [selectedCustomer, currentTenant])
 
+  // Prices are GST-inclusive: the grand total is exactly what was quoted,
+  // and the GST breakup is derived backwards out of it.
   const summary = useMemo(() => {
     let subtotal = 0, discount = 0, cgst = 0, sgst = 0, igst = 0
     cart.forEach((item) => {
       const lineTotal = item.unit_price * item.quantity
       const disc = item.discount_amount || 0
-      const taxable = lineTotal - disc
-      const gstAmt = (taxable * (item.gst_rate || 0)) / 100
+      const gross = lineTotal - disc
+      const gstAmt = gross - (gross * 100) / (100 + (item.gst_rate || 0))
       subtotal += lineTotal; discount += disc
       if (sameState) { cgst += gstAmt / 2; sgst += gstAmt / 2 } else igst += gstAmt
     })
-    const taxable = subtotal - discount
+    const grandTotal = subtotal - discount
     const totalGst = cgst + sgst + igst
-    return { subtotal, discount, taxable, cgst, sgst, igst, totalGst, grandTotal: taxable + totalGst }
+    return { subtotal, discount, taxable: grandTotal - totalGst, cgst, sgst, igst, totalGst, grandTotal }
   }, [cart, sameState])
 
   // ── Cost basis preview ───────────────────────────────────────────────────
@@ -327,7 +329,7 @@ export default function NewSale() {
   const itemCost = (item) => {
     if (item.stock_source === 'official') {
       const p = item.products ?? {}
-      const price = priceMap.get(priceKey(p.brand, p.model, p.variant))
+      const price = priceMap.get(p.model_id)
       const basis = financeInvolved ? price?.finance_price : price?.oc_price
       return basis == null
         ? { basis: null, source: financeInvolved ? 'finance' : 'oc' }
@@ -895,12 +897,14 @@ export default function NewSale() {
 
                           {/* Official units: model-level prices are the profit basis */}
                           {scannedDevice.stock_source === 'official' && (() => {
-                            const mp = priceMap.get(priceKey(p.brand, p.model, p.variant))
+                            const mp = priceMap.get(p.model_id)
                             if (!mp || (mp.finance_price == null && mp.oc_price == null)) {
                               return (
-                                <p className="text-xs text-amber-400 font-medium">
-                                  No Finance / O/C price set for this model — the sale will be blocked until set in the Price Editor.
-                                </p>
+                                <button type="button"
+                                  onClick={() => navigate(`/prices?model=${p.model_id}`)}
+                                  className="text-xs text-amber-400 font-medium text-left hover:underline underline-offset-2">
+                                  No Finance / O/C price set for this model — the sale will be blocked. Tap to set it in the Price Editor →
+                                </button>
                               )
                             }
                             return (
@@ -1115,30 +1119,42 @@ export default function NewSale() {
                 {summary.discount > 0 && (
                   <Row label="Discount" value={`-${fmt(summary.discount)}`} className="text-amber-400" />
                 )}
-                <Row label="Taxable Amount" value={fmt(summary.taxable)} />
+                <div className="border-t border-border pt-2">
+                  <Row label="Grand Total" value={fmt(summary.grandTotal)} bold />
+                  <p className="text-[11px] text-muted-foreground mt-0.5">GST included in price</p>
+                </div>
                 <div className="border-t border-border pt-2 space-y-1.5">
                   {selectedCustomer ? (
-                    sameState ? (
-                      <>
-                        <Row label="CGST" value={fmt(summary.cgst)} muted />
-                        <Row label="SGST" value={fmt(summary.sgst)} muted />
-                      </>
-                    ) : (
-                      <Row label="IGST" value={fmt(summary.igst)} muted />
-                    )
+                    <>
+                      <Row label="Taxable Value" value={fmt(summary.taxable)} muted />
+                      {sameState ? (
+                        <>
+                          <Row label="CGST (incl.)" value={fmt(summary.cgst)} muted />
+                          <Row label="SGST (incl.)" value={fmt(summary.sgst)} muted />
+                        </>
+                      ) : (
+                        <Row label="IGST (incl.)" value={fmt(summary.igst)} muted />
+                      )}
+                    </>
                   ) : (
-                    <p className="text-xs text-muted-foreground">Identify customer above to compute GST</p>
+                    <p className="text-xs text-muted-foreground">Identify customer above to compute the GST breakup</p>
                   )}
                 </div>
                 <div className="border-t border-border pt-2">
-                  <Row label="Grand Total" value={fmt(summary.grandTotal)} bold />
-                </div>
-                <div className="border-t border-border pt-2">
                   {missingPriceItems.length > 0 ? (
-                    <p className="text-xs text-red-400">
-                      {missingPriceItems.length} official item{missingPriceItems.length > 1 ? 's' : ''} ha{missingPriceItems.length > 1 ? 've' : 's'} no
-                      {' '}{financeInvolved ? 'Finance' : 'O/C'} price — set it in the Price Editor to enable this sale
-                    </p>
+                    <div className="space-y-1">
+                      <p className="text-xs text-red-400">
+                        {missingPriceItems.length} official item{missingPriceItems.length > 1 ? 's' : ''} ha{missingPriceItems.length > 1 ? 've' : 's'} no
+                        {' '}{financeInvolved ? 'Finance' : 'O/C'} price — tap to set it and enable this sale:
+                      </p>
+                      {[...new Map(missingPriceItems.map((i) => [i.products?.model_id, i])).values()].map((item) => (
+                        <button key={item.products?.model_id} type="button"
+                          onClick={() => navigate(`/prices?model=${item.products?.model_id}`)}
+                          className="block text-left text-xs text-indigo-400 hover:underline underline-offset-2">
+                          {[item.products?.brand, item.products?.model, item.products?.variant].filter(Boolean).join(' ')} →
+                        </button>
+                      ))}
+                    </div>
                   ) : estProfit != null ? (
                     <Row
                       label={`Est. Profit (${financeInvolved ? 'Finance' : 'O/C'}/cost basis)`}

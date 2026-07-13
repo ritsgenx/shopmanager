@@ -3,12 +3,19 @@ import { motion } from 'framer-motion'
 import { useForm, Controller } from 'react-hook-form'
 import {
   Loader2, MapPin, Upload, AlertCircle, Image, X, Navigation, Sun, SunMedium, Moon, Monitor,
+  Percent, Plus, Trash2,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
 import { useAuth } from '@/context/AuthContext'
 import { useTheme } from '@/context/ThemeContext'
-import { getTenantSettings, updateTenantSettings, uploadLogo } from '@/lib/settings'
+import {
+  getTenantSettings, updateTenantSettings, uploadLogo,
+  getLowStockThreshold, saveLowStockThreshold, DEFAULT_LOW_STOCK_THRESHOLD,
+} from '@/lib/settings'
+import {
+  getTaxCategories, getTaxCategoryUsage, createTaxCategory, updateTaxCategory, deleteTaxCategory,
+} from '@/lib/taxCategories'
 import { phoneKeyDown, phonePaste } from '@/lib/validations'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -49,6 +56,227 @@ function SectionHeader({ label }) {
 function FieldError({ error }) {
   if (!error) return null
   return <p className="text-red-400 text-xs mt-1">{error.message}</p>
+}
+
+// ── Inventory Alerts (owner-only) ────────────────────────────────────────────
+// The app-wide definition of "low stock": a model is low when its total
+// remaining units fall to this number or below (zero = out of stock).
+function InventoryAlertsCard({ tenantId }) {
+  const [value, setValue] = useState(String(DEFAULT_LOW_STOCK_THRESHOLD))
+  const [saved, setSaved] = useState(DEFAULT_LOW_STOCK_THRESHOLD)
+  const [saving, setSaving] = useState(false)
+
+  useEffect(() => {
+    if (!tenantId) return
+    getLowStockThreshold(tenantId).then((v) => { setValue(String(v)); setSaved(v) })
+  }, [tenantId])
+
+  const dirty = Number(value) !== saved
+
+  const handleSave = async () => {
+    const n = Number(value)
+    if (!Number.isInteger(n) || n < 1 || n > 100) {
+      toast.error('Threshold must be a whole number between 1 and 100')
+      return
+    }
+    setSaving(true)
+    const { error } = await saveLowStockThreshold(tenantId, n)
+    setSaving(false)
+    if (error) { toast.error(error.message ?? 'Failed to save'); return }
+    setSaved(n)
+    toast.success(`Low-stock alert set to ${n} unit${n > 1 ? 's' : ''}`)
+  }
+
+  return (
+    <Card>
+      <CardHeader className="pb-4">
+        <CardTitle className="flex items-center gap-2 text-lg">
+          <AlertCircle className="w-5 h-5 text-yellow-400" />
+          Inventory Alerts
+        </CardTitle>
+        <p className="text-sm text-muted-foreground">
+          A model counts as <strong>low stock</strong> when its remaining units fall to this
+          number or below (zero = out of stock). One rule, used everywhere — Inventory page,
+          Dashboard alerts and stock badges.
+        </p>
+      </CardHeader>
+      <CardContent>
+        <div className="flex items-center gap-3">
+          <Label className="whitespace-nowrap">Alert when a model has</Label>
+          <Input
+            value={value}
+            onChange={(e) => setValue(e.target.value.replace(/[^\d]/g, ''))}
+            inputMode="numeric"
+            className="w-20 text-right"
+          />
+          <span className="text-sm text-muted-foreground whitespace-nowrap">units or fewer</span>
+          {dirty && (
+            <Button size="sm" className="h-9 bg-indigo-500 hover:bg-indigo-600 text-white" onClick={handleSave} disabled={saving}>
+              {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Save'}
+            </Button>
+          )}
+        </div>
+      </CardContent>
+    </Card>
+  )
+}
+
+// ── Tax Categories (owner-only) ──────────────────────────────────────────────
+// The single source of truth for GST rate + HSN per commodity group. Models
+// point at a category; every PO, sale and invoice resolves through it. Rate
+// edits apply to FUTURE transactions only — past bills keep their frozen rate.
+function TaxCategoryRow({ row, usage, onSaved, onDeleted, tenantId }) {
+  const [name, setName] = useState(row.name)
+  const [hsn, setHsn] = useState(row.hsn_code ?? '')
+  const [rate, setRate] = useState(String(Number(row.gst_rate)))
+  const [saving, setSaving] = useState(false)
+
+  const dirty =
+    name.trim().toLowerCase() !== row.name ||
+    (hsn.trim() || '') !== (row.hsn_code ?? '') ||
+    Number(rate) !== Number(row.gst_rate)
+
+  const models = usage[row.id] ?? 0
+
+  const handleSave = async () => {
+    if (!name.trim()) { toast.error('Category name is required'); return }
+    if (rate === '' || Number(rate) < 0 || Number(rate) > 100) { toast.error('GST rate must be 0–100'); return }
+    if (Number(rate) !== Number(row.gst_rate) && models > 0) {
+      const ok = window.confirm(
+        `Change GST for "${row.name}" from ${Number(row.gst_rate)}% to ${Number(rate)}%?\n\n` +
+        `${models} model${models > 1 ? 's' : ''} use${models > 1 ? '' : 's'} this category — all FUTURE sales and purchases will bill at ${Number(rate)}%.\n` +
+        `Past invoices are not affected.`
+      )
+      if (!ok) return
+    }
+    setSaving(true)
+    const { error } = await updateTaxCategory(tenantId, row.id, { name, hsn_code: hsn, gst_rate: rate })
+    setSaving(false)
+    if (error) {
+      if (error.code === '23505') toast.error('A category with this name already exists.')
+      else toast.error(error.message ?? 'Failed to save category')
+      return
+    }
+    toast.success(`"${name.trim().toLowerCase()}" saved`)
+    onSaved()
+  }
+
+  const handleDelete = async () => {
+    const ok = window.confirm(`Delete category "${row.name}"?`)
+    if (!ok) return
+    const { error } = await deleteTaxCategory(tenantId, row.id)
+    if (error) { toast.error(error.message ?? 'Failed to delete'); return }
+    toast.success(`"${row.name}" deleted`)
+    onDeleted()
+  }
+
+  return (
+    <div className="grid grid-cols-[1fr_5.5rem_4.5rem_auto] gap-2 items-center">
+      <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Category" className="capitalize" />
+      <Input value={hsn} onChange={(e) => setHsn(e.target.value)} placeholder="HSN" />
+      <Input value={rate} onChange={(e) => setRate(e.target.value.replace(/[^\d.]/g, ''))}
+        inputMode="numeric" placeholder="%" className="text-right" />
+      <div className="flex items-center gap-1">
+        {dirty ? (
+          <Button size="sm" className="h-9 bg-indigo-500 hover:bg-indigo-600 text-white" onClick={handleSave} disabled={saving}>
+            {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Save'}
+          </Button>
+        ) : (
+          <span className="text-xs text-muted-foreground w-14 text-center whitespace-nowrap">
+            {models} model{models === 1 ? '' : 's'}
+          </span>
+        )}
+        <Button variant="ghost" size="icon" className="h-9 w-9 text-muted-foreground hover:text-red-400"
+          onClick={handleDelete} disabled={models > 0}
+          title={models > 0 ? 'In use by models — reassign them first' : 'Delete category'}>
+          <Trash2 className="w-4 h-4" />
+        </Button>
+      </div>
+    </div>
+  )
+}
+
+function TaxCategoriesCard({ tenantId }) {
+  const [rows, setRows] = useState([])
+  const [usage, setUsage] = useState({})
+  const [loading, setLoading] = useState(true)
+  const [adding, setAdding] = useState(false)
+  const [newRow, setNewRow] = useState({ name: '', hsn: '', rate: '18' })
+
+  const load = async () => {
+    const [catRes, usageRes] = await Promise.all([
+      getTaxCategories(tenantId),
+      getTaxCategoryUsage(tenantId),
+    ])
+    setRows(catRes.data ?? [])
+    setUsage(usageRes.data ?? {})
+    setLoading(false)
+  }
+
+  useEffect(() => { if (tenantId) load() }, [tenantId])
+
+  const handleAdd = async () => {
+    if (!newRow.name.trim()) { toast.error('Category name is required'); return }
+    if (newRow.rate === '' || Number(newRow.rate) < 0 || Number(newRow.rate) > 100) {
+      toast.error('GST rate must be 0–100'); return
+    }
+    setAdding(true)
+    const { error } = await createTaxCategory(tenantId, {
+      name: newRow.name, hsn_code: newRow.hsn, gst_rate: newRow.rate,
+    })
+    setAdding(false)
+    if (error) {
+      if (error.code === '23505') toast.error('A category with this name already exists.')
+      else toast.error(error.message ?? 'Failed to add category')
+      return
+    }
+    toast.success(`"${newRow.name.trim().toLowerCase()}" added`)
+    setNewRow({ name: '', hsn: '', rate: '18' })
+    load()
+  }
+
+  return (
+    <Card>
+      <CardHeader className="pb-4">
+        <CardTitle className="flex items-center gap-2 text-lg">
+          <Percent className="w-5 h-5 text-indigo-400" />
+          Tax Categories (GST &amp; HSN)
+        </CardTitle>
+        <p className="text-sm text-muted-foreground">
+          One row per commodity group. Every model belongs to a category, and all purchases,
+          sales and invoices bill at its rate — nobody can override it during entry.
+          When the government changes a rate, edit it here once; past bills keep the rate they were billed at.
+        </p>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        {loading ? (
+          <p className="text-sm text-muted-foreground py-4 text-center">Loading…</p>
+        ) : (
+          <>
+            <div className="grid grid-cols-[1fr_5.5rem_4.5rem_auto] gap-2 text-xs text-muted-foreground font-medium px-1">
+              <span>Category</span><span>HSN</span><span className="text-right">GST %</span><span />
+            </div>
+            {rows.map((row) => (
+              <TaxCategoryRow key={row.id} row={row} usage={usage} tenantId={tenantId}
+                onSaved={load} onDeleted={load} />
+            ))}
+
+            <div className="grid grid-cols-[1fr_5.5rem_4.5rem_auto] gap-2 items-center border-t border-border pt-3">
+              <Input value={newRow.name} onChange={(e) => setNewRow((p) => ({ ...p, name: e.target.value }))}
+                placeholder="New category…" />
+              <Input value={newRow.hsn} onChange={(e) => setNewRow((p) => ({ ...p, hsn: e.target.value }))}
+                placeholder="HSN" />
+              <Input value={newRow.rate} onChange={(e) => setNewRow((p) => ({ ...p, rate: e.target.value.replace(/[^\d.]/g, '') }))}
+                inputMode="numeric" placeholder="%" className="text-right" />
+              <Button size="sm" variant="outline" className="h-9" onClick={handleAdd} disabled={adding}>
+                {adding ? <Loader2 className="w-4 h-4 animate-spin" /> : <><Plus className="w-4 h-4 mr-1" />Add</>}
+              </Button>
+            </div>
+          </>
+        )}
+      </CardContent>
+    </Card>
+  )
 }
 
 export default function Settings() {
@@ -496,6 +724,10 @@ export default function Settings() {
           </Button>
         </div>
       </form>}
+
+      {/* These cards manage their own saves — outside the profile form */}
+      {!isEmployee && <InventoryAlertsCard tenantId={currentTenant?.id} />}
+      {!isEmployee && <TaxCategoriesCard tenantId={currentTenant?.id} />}
     </motion.div>
   )
 }

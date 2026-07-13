@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useMemo } from 'react'
+import React, { useState, useEffect, useMemo, useRef } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import {
   ArrowLeft, Search, ChevronRight, IndianRupee, History,
@@ -13,7 +14,7 @@ import { cn } from '@/lib/utils'
 import { useAuth } from '@/context/AuthContext'
 import { getProducts } from '@/lib/products'
 import {
-  priceKey, getCurrentPrices, getPriceHistory, addPriceEntries,
+  getCurrentPrices, getPriceHistory, addPriceEntries,
   getMissingPriceModels,
 } from '@/lib/modelPrices'
 import { Button } from '@/components/ui/button'
@@ -63,7 +64,7 @@ function PriceHistoryDialog({ open, onOpenChange, row, tenantId }) {
   useEffect(() => {
     if (!open || !row) return
     setLoading(true)
-    getPriceHistory(tenantId, row.brand, row.model, row.variant).then(({ data }) => {
+    getPriceHistory(tenantId, row.model_id).then(({ data }) => {
       setHistory(data ?? [])
       setLoading(false)
     })
@@ -207,6 +208,12 @@ export default function PriceEditor() {
   const [historyRow, setHistoryRow] = useState(null)
   const [historyOpen, setHistoryOpen] = useState(false)
 
+  // Deep link: /prices?model=<model_id> lands directly on that model's row.
+  // Any screen can use it (Models page, New Sale warnings, future widgets).
+  const [searchParams] = useSearchParams()
+  const [highlightId, setHighlightId] = useState(null)
+  const consumedDeepLink = useRef(null)
+
   const fetchAll = async () => {
     if (!tenantId) return
     setLoading(true)
@@ -224,13 +231,13 @@ export default function PriceEditor() {
 
   useEffect(() => { fetchAll() }, [tenantId])
 
-  // Group products → one row per brand+model+variant (colors share a price)
+  // Group products → one row per model (colors share a price)
   const modelRows = useMemo(() => {
     const map = new Map()
     for (const p of products) {
-      const key = priceKey(p.brand, p.model, p.variant)
+      const key = p.model_id
       const cur = map.get(key) ?? {
-        key, brand: p.brand, model: p.model, variant: p.variant || '',
+        key, model_id: p.model_id, brand: p.brand, model: p.model, variant: p.variant || '',
         category: p.category, colors: new Set(),
       }
       if (p.color) cur.colors.add(p.color)
@@ -238,6 +245,26 @@ export default function PriceEditor() {
     }
     return [...map.values()].map((r) => ({ ...r, colors: [...r.colors] }))
   }, [products])
+
+  // Apply the deep link once per target: select the brand, filter to the
+  // model, flash the row, and (desktop only — phones would pop the keyboard)
+  // focus its first price cell.
+  useEffect(() => {
+    const target = searchParams.get('model')
+    if (!target || loading || consumedDeepLink.current === target) return
+    const row = modelRows.find((r) => r.model_id === target)
+    if (!row) return
+    consumedDeepLink.current = target
+    setSelectedBrand(row.brand)
+    setSearch(row.model)
+    setHighlightId(target)
+    setTimeout(() => {
+      if (window.matchMedia('(min-width: 768px)').matches) {
+        document.querySelector(`[data-model-row="${target}"] input`)?.focus()
+      }
+    }, 150)
+    setTimeout(() => setHighlightId(null), 2500)
+  }, [searchParams, loading, modelRows]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const brands = useMemo(() => {
     const map = new Map()
@@ -311,7 +338,7 @@ export default function PriceEditor() {
         return v === '' ? null : Number(v)
       }
       const entry = {
-        brand: row.brand, model: row.model, variant: row.variant,
+        model_id: row.model_id,
         mop: parse('mop'), finance_price: parse('finance'), oc_price: parse('oc'),
       }
       entries.push(entry)
@@ -394,7 +421,7 @@ export default function PriceEditor() {
             <div className="flex flex-wrap gap-2">
               {missingModels.map((m) => (
                 <button
-                  key={priceKey(m.brand, m.model, m.variant)}
+                  key={m.model_id}
                   onClick={() => { setSelectedBrand(m.brand); setSearch(m.model) }}
                   className="text-xs px-2.5 py-1 rounded-md border border-amber-500/40 text-amber-300 hover:bg-amber-500/10 transition-colors"
                 >
@@ -478,7 +505,12 @@ export default function PriceEditor() {
             const stale = price && daysAgo(price.created_at) > STALE_DAYS
             const noPrices = !price || (price.finance_price == null && price.oc_price == null)
             return (
-              <Card key={row.key} className={cn('border-border', stale && 'border-amber-500/40 bg-amber-500/5')}>
+              <Card key={row.key} data-model-row={row.model_id}
+                className={cn(
+                  'border-border transition-colors duration-700',
+                  stale && 'border-amber-500/40 bg-amber-500/5',
+                  highlightId === row.model_id && 'border-indigo-500/70 bg-indigo-500/10'
+                )}>
                 <CardContent className="p-4 space-y-3">
                   <div className="flex items-start justify-between gap-2">
                     <div className="min-w-0">
@@ -552,8 +584,12 @@ export default function PriceEditor() {
                     const stale = price && daysAgo(price.created_at) > STALE_DAYS
                     const noPrices = !price || (price.finance_price == null && price.oc_price == null)
                     return (
-                      <tr key={row.key}
-                        className={cn('border-t border-border/50', stale && 'bg-amber-500/5')}>
+                      <tr key={row.key} data-model-row={row.model_id}
+                        className={cn(
+                          'border-t border-border/50 transition-colors duration-700',
+                          stale && 'bg-amber-500/5',
+                          highlightId === row.model_id && 'bg-indigo-500/10'
+                        )}>
                         <td className="px-4 py-2.5">
                           <button onClick={() => openHistory(row)}
                             className="font-medium hover:text-indigo-400 hover:underline underline-offset-2 transition-colors text-left">

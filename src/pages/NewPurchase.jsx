@@ -118,19 +118,20 @@ export default function NewPurchase() {
 
   const isOfficial = purchaseType === 'official'
 
-  // Running totals
+  // Running totals — unit costs are GST-INCLUSIVE (the money actually paid
+  // per piece, straight off the supplier's bill). GST is carved out of the
+  // total, never added on top, so Grand Total always equals what was paid.
   const subtotal = lineItems.reduce(
     (sum, item) => sum + Number(item.unit_price || 0) * Number(item.quantity || 0),
     0
   )
   const gstAmount = isOfficial
-    ? lineItems.reduce(
-        (sum, item) =>
-          sum + (Number(item.unit_price || 0) * Number(item.quantity || 0) * Number(item.gst_rate || 0)) / 100,
-        0
-      )
+    ? lineItems.reduce((sum, item) => {
+        const gross = Number(item.unit_price || 0) * Number(item.quantity || 0)
+        return sum + (gross - (gross * 100) / (100 + Number(item.gst_rate || 0)))
+      }, 0)
     : 0
-  const grandTotal = subtotal + gstAmount
+  const grandTotal = subtotal
 
   const onSubmit = async (values) => {
     if (submittingRef.current) return
@@ -169,15 +170,17 @@ export default function NewPurchase() {
 
     const processedItems = lineItems.map((item) => {
       const qty = item.category === 'smartphone' ? 1 : Number(item.quantity)
-      const lineSubtotal = Number(item.unit_price) * qty
-      const lineGst = isOfficial ? (lineSubtotal * Number(item.gst_rate)) / 100 : 0
+      const lineGross = Number(item.unit_price) * qty
+      const lineGst = isOfficial
+        ? Math.round((lineGross - (lineGross * 100) / (100 + Number(item.gst_rate || 0))) * 100) / 100
+        : 0
       return {
         product_id: item.product_id,
         quantity: qty,
         unit_price: Number(item.unit_price),
         gst_rate: Number(item.gst_rate),
         gst_amount: lineGst,
-        total_amount: lineSubtotal,
+        total_amount: Math.round((lineGross - lineGst) * 100) / 100, // taxable base
         imei_number: item.imei_number || null,
       }
     })
@@ -193,9 +196,9 @@ export default function NewPurchase() {
       bill_date: isOfficial ? values.bill_date : null,
       payment_method: values.payment_method,
       payment_status: values.payment_status,
-      total_amount: subtotal,
-      gst_amount: gstAmount,
-      grand_total: grandTotal,
+      total_amount: Math.round((subtotal - gstAmount) * 100) / 100, // taxable base
+      gst_amount: Math.round(gstAmount * 100) / 100,
+      grand_total: Math.round(grandTotal * 100) / 100,
     }
 
     const { error } = await createPurchase(headerData, processedItems, tenantId, {
@@ -396,8 +399,10 @@ export default function NewPurchase() {
                     {lineItems.map((item) => {
                       const isPhone = item.category === 'smartphone'
                       const qty = isPhone ? 1 : Number(item.quantity || 0)
-                      const lineSubtotal = Number(item.unit_price || 0) * qty
-                      const lineGst = isOfficial ? (lineSubtotal * Number(item.gst_rate || 0)) / 100 : 0
+                      const lineGross = Number(item.unit_price || 0) * qty
+                      const lineGst = isOfficial
+                        ? lineGross - (lineGross * 100) / (100 + Number(item.gst_rate || 0))
+                        : 0
                       const imeiInvalid = isPhone && item.imei_number && !/^\d{15}$/.test(item.imei_number)
                       return (
                         <tr key={item._id}>
@@ -455,7 +460,7 @@ export default function NewPurchase() {
                           {isOfficial && (
                             <td className="py-2 text-right text-muted-foreground">{fmt(lineGst)}</td>
                           )}
-                          <td className="py-2 text-right font-medium">{fmt(lineSubtotal + lineGst)}</td>
+                          <td className="py-2 text-right font-medium">{fmt(lineGross)}</td>
                           <td className="py-2 pl-2">
                             <Button
                               type="button"
@@ -482,26 +487,27 @@ export default function NewPurchase() {
           <Card>
             <CardContent className="pt-5">
               <div className="max-w-xs ml-auto space-y-2 text-sm">
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">Subtotal</span>
-                  <span>{fmt(subtotal)}</span>
-                </div>
-                {isOfficial && (
-                  <>
-                    <div className="flex justify-between text-muted-foreground">
-                      <span>CGST (9%)</span>
-                      <span>{fmt(gstAmount / 2)}</span>
-                    </div>
-                    <div className="flex justify-between text-muted-foreground">
-                      <span>SGST (9%)</span>
-                      <span>{fmt(gstAmount / 2)}</span>
-                    </div>
-                  </>
-                )}
-                <div className="flex justify-between font-bold text-base border-t border-border pt-2">
+                <div className="flex justify-between font-bold text-base">
                   <span>Grand Total</span>
                   <span>{fmt(grandTotal)}</span>
                 </div>
+                <p className="text-[11px] text-muted-foreground -mt-1">GST included in unit costs</p>
+                {isOfficial && (
+                  <div className="border-t border-border pt-2 space-y-1.5">
+                    <div className="flex justify-between text-muted-foreground">
+                      <span>Taxable Value</span>
+                      <span>{fmt(subtotal - gstAmount)}</span>
+                    </div>
+                    <div className="flex justify-between text-muted-foreground">
+                      <span>CGST (incl.)</span>
+                      <span>{fmt(gstAmount / 2)}</span>
+                    </div>
+                    <div className="flex justify-between text-muted-foreground">
+                      <span>SGST (incl.)</span>
+                      <span>{fmt(gstAmount / 2)}</span>
+                    </div>
+                  </div>
+                )}
               </div>
             </CardContent>
           </Card>

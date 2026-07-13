@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react'
-import { Search, Clock } from 'lucide-react'
+import { Search, Clock, Check, Smartphone, Package, PackageSearch, SearchX } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Input } from '@/components/ui/input'
 
@@ -23,12 +23,30 @@ const saveRecent = (tenantId, productId) => {
   } catch {}
 }
 
+function EmptyState({ icon: Icon, title, hint }) {
+  return (
+    <div className="flex flex-col items-center justify-center gap-2 px-4 py-8 text-center">
+      <div className="w-10 h-10 rounded-full bg-slate-700/60 flex items-center justify-center">
+        <Icon className="w-5 h-5 text-slate-400" />
+      </div>
+      <p className="text-sm text-slate-300">{title}</p>
+      {hint && <p className="text-xs text-slate-500">{hint}</p>}
+    </div>
+  )
+}
+
 // Searchable product picker over the products catalog. Type-ahead filters
 // across brand/model/variant/color in any word order; with an empty query the
 // recently picked products (per tenant, localStorage) are shown on top.
 // Controlled by product id: value / onChange(productId).
 // Styled for the dark slate dialogs it lives in (Add Stock, PO line items).
-export default function ProductPicker({ products, value, onChange, tenantId, error, placeholder = 'Search brand, model…' }) {
+// `inline` renders the list as an always-visible panel in normal flow instead
+// of a floating dropdown — use it when the picker is the dialog's main content
+// so it doesn't create nested scrollbars.
+export default function ProductPicker({
+  products, value, onChange, tenantId, error,
+  placeholder = 'Search brand, model…', inline = false,
+}) {
   const [query, setQuery] = useState(null) // null = not editing; input shows selected label
   const [open, setOpen] = useState(false)
   const [activeIdx, setActiveIdx] = useState(0)
@@ -36,8 +54,10 @@ export default function ProductPicker({ products, value, onChange, tenantId, err
   const listRef = useRef(null)
 
   const selected = products.find((p) => p.id === value)
+  const showList = inline || open
 
   useEffect(() => {
+    if (inline) return
     const handler = (e) => {
       if (rootRef.current && !rootRef.current.contains(e.target)) {
         setOpen(false)
@@ -46,7 +66,7 @@ export default function ProductPicker({ products, value, onChange, tenantId, err
     }
     document.addEventListener('mousedown', handler)
     return () => document.removeEventListener('mousedown', handler)
-  }, [])
+  }, [inline])
 
   // rows: { type: 'header', label } | { type: 'product', product }
   const rows = useMemo(() => {
@@ -86,7 +106,7 @@ export default function ProductPicker({ products, value, onChange, tenantId, err
   }
 
   const handleKeyDown = (e) => {
-    if (!open) return
+    if (!showList) return
     if (e.key === 'ArrowDown') {
       e.preventDefault()
       setActiveIdx((i) => Math.min(i + 1, productRows.length - 1))
@@ -110,7 +130,7 @@ export default function ProductPicker({ products, value, onChange, tenantId, err
   let productIdx = -1
 
   return (
-    <div ref={rootRef} className="relative">
+    <div ref={rootRef} className={cn(!inline && 'relative')}>
       <div className="relative">
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
         <Input
@@ -119,54 +139,82 @@ export default function ProductPicker({ products, value, onChange, tenantId, err
           onFocus={() => { setQuery(''); setOpen(true) }}
           onKeyDown={handleKeyDown}
           placeholder={placeholder}
-          className="pl-9 bg-slate-700 border-slate-600 text-white placeholder:text-slate-500"
+          className="pl-9 h-10 rounded-lg bg-slate-700/80 border-slate-600 text-white placeholder:text-slate-500 focus-visible:ring-indigo-500/60 focus-visible:border-indigo-500/60"
         />
       </div>
 
-      {open && (
+      {showList && (
         <div
           ref={listRef}
-          className="absolute top-full left-0 right-0 z-50 mt-1 bg-slate-800 border border-slate-600 rounded-lg shadow-xl max-h-56 overflow-y-auto"
+          className={cn(
+            'thin-scrollbar overflow-y-auto rounded-xl border border-slate-600/70 bg-slate-800/95 backdrop-blur-sm',
+            inline
+              ? 'mt-2 h-60'
+              : 'absolute top-full left-0 right-0 z-50 mt-1.5 max-h-64 shadow-2xl shadow-black/40'
+          )}
         >
           {products.length === 0 ? (
-            <p className="px-3 py-4 text-sm text-slate-400 text-center">
-              No products yet — switch to "New Product"
-            </p>
+            <EmptyState
+              icon={PackageSearch}
+              title="No models in the catalog yet"
+              hint="Add one from the Models page first"
+            />
           ) : productRows.length === 0 ? (
-            <p className="px-3 py-4 text-sm text-slate-400 text-center">
-              No products match "{query}"
-            </p>
+            <EmptyState
+              icon={SearchX}
+              title={`No products match “${query}”`}
+              hint="Try fewer or different words"
+            />
           ) : (
-            rows.map((row, i) => {
-              if (row.type === 'header') {
+            <div className="p-1.5">
+              {rows.map((row, i) => {
+                if (row.type === 'header') {
+                  return (
+                    <p key={`h-${i}`} className="px-2.5 pt-2.5 pb-1.5 text-[10px] font-medium uppercase tracking-wider text-slate-500 flex items-center gap-1.5">
+                      {row.label === 'Recent' && <Clock className="w-3 h-3" />}
+                      {row.label}
+                    </p>
+                  )
+                }
+                productIdx += 1
+                const idx = productIdx
+                const p = row.product
+                const isSelected = p.id === value
+                const CategoryIcon = p.category === 'accessory' ? Package : Smartphone
                 return (
-                  <p key={`h-${i}`} className="px-3 pt-2 pb-1 text-[10px] uppercase tracking-wider text-slate-500 flex items-center gap-1">
-                    {row.label === 'Recent' && <Clock className="w-3 h-3" />}
-                    {row.label}
-                  </p>
+                  <button
+                    key={p.id}
+                    type="button"
+                    data-active={idx === activeIdx}
+                    onMouseDown={(e) => { e.preventDefault(); pick(p) }}
+                    onMouseEnter={() => setActiveIdx(idx)}
+                    className={cn(
+                      'w-full flex items-center gap-3 text-left px-2.5 py-2 rounded-lg transition-colors',
+                      idx === activeIdx ? 'bg-slate-700/80' : 'bg-transparent',
+                      isSelected && 'bg-indigo-500/15'
+                    )}
+                  >
+                    <div className={cn(
+                      'w-8 h-8 shrink-0 rounded-lg flex items-center justify-center',
+                      isSelected ? 'bg-indigo-500/25 text-indigo-300' : 'bg-slate-700 text-slate-400'
+                    )}>
+                      <CategoryIcon className="w-4 h-4" />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className={cn('text-sm truncate', isSelected ? 'text-indigo-200 font-medium' : 'text-white')}>
+                        {p.brand} {p.model}
+                      </p>
+                      {(p.variant || p.color) && (
+                        <p className="text-xs text-slate-400 truncate">
+                          {[p.variant, p.color].filter(Boolean).join(' · ')}
+                        </p>
+                      )}
+                    </div>
+                    {isSelected && <Check className="w-4 h-4 shrink-0 text-indigo-400" />}
+                  </button>
                 )
-              }
-              productIdx += 1
-              const idx = productIdx
-              const p = row.product
-              return (
-                <button
-                  key={p.id}
-                  type="button"
-                  data-active={idx === activeIdx}
-                  onMouseDown={(e) => { e.preventDefault(); pick(p) }}
-                  onMouseEnter={() => setActiveIdx(idx)}
-                  className={cn(
-                    'w-full text-left px-3 py-2 text-sm text-white transition-colors',
-                    idx === activeIdx && 'bg-slate-700'
-                  )}
-                >
-                  {p.brand} {p.model}
-                  {p.variant && <span className="text-slate-400"> ({p.variant})</span>}
-                  {p.color && <span className="text-slate-400"> — {p.color}</span>}
-                </button>
-              )
-            })
+              })}
+            </div>
           )}
         </div>
       )}

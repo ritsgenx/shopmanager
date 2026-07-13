@@ -1,4 +1,5 @@
 import { supabase } from './supabase'
+import { PRODUCT_EMBED, flattenProduct } from './products'
 import { getProductByImei } from './inventory'
 import { getSaleById, getCustomerSales, getSales } from './sales'
 import { getPurchaseById } from './purchases'
@@ -76,13 +77,14 @@ export async function searchByPurchase(tenantId, term) {
     .from('inventory')
     .select(`
       id, imei_number, status, quantity_remaining, purchase_price,
-      products ( brand, model, variant, color )
+      ${PRODUCT_EMBED}
     `)
     .eq('tenant_id', tenantId)
     .eq('purchase_id', purchase.id)
     .order('created_at', { ascending: false })
 
-  return { data: { purchase, items: items ?? [] }, error: null }
+  const flatItems = (items ?? []).map((i) => ({ ...i, products: flattenProduct(i.products) }))
+  return { data: { purchase, items: flatItems }, error: null }
 }
 
 // ── Search by Customer (name / phone) ──────────────────────────────────────
@@ -119,7 +121,7 @@ export async function getEmployeeActivity(tenantId, userId) {
       .from('inventory')
       .select(`
         id, imei_number, status, purchase_price, created_at,
-        products ( brand, model, variant, color )
+        ${PRODUCT_EMBED}
       `)
       .eq('tenant_id', tenantId)
       .eq('submitted_by', userId)
@@ -129,7 +131,7 @@ export async function getEmployeeActivity(tenantId, userId) {
 
   return {
     sales: salesRes.data ?? [],
-    stockAdded: stockRes.data ?? [],
+    stockAdded: (stockRes.data ?? []).map((i) => ({ ...i, products: flattenProduct(i.products) })),
     error: salesRes.error || stockRes.error || null,
   }
 }

@@ -152,37 +152,92 @@ async function clearTenantData(tenantId) {
   await db.from('attendance').delete().eq('tenant_id', tenantId)
 }
 
-// ── Product setup ─────────────────────────────────────────────────────────────
+// ── Catalog setup ─────────────────────────────────────────────────────────────
+// Models (brand+name+variant) are first-class rows; products are their color
+// rows. Returns the same map as before: brand|model|variant|color → product id.
 async function ensureProducts(tenantId) {
-  const { data: existing } = await db
-    .from('products')
-    .select('id, brand, model, variant, color')
+  // 0. Tax category — models must point at one (smartphone / 8517 / 18%)
+  let { data: taxCat } = await db
+    .from('tax_categories')
+    .select('id')
     .eq('tenant_id', tenantId)
-
-  const map = {}
-  for (const p of existing ?? []) {
-    map[`${p.brand}|${p.model}|${p.variant}|${p.color}`] = p.id
+    .eq('name', 'smartphone')
+    .maybeSingle()
+  if (!taxCat) {
+    const { data: created, error: tcErr } = await db
+      .from('tax_categories')
+      .insert({ tenant_id: tenantId, name: 'smartphone', hsn_code: '8517', gst_rate: 18 })
+      .select('id')
+      .single()
+    if (tcErr) throw new Error(`Tax category creation failed: ${tcErr.message}`)
+    taxCat = created
   }
 
-  const toCreate = CATALOG
-    .filter(c => !map[`${c.brand}|${c.model}|${c.variant}|${c.color}`])
-    .map(c => ({
-      tenant_id:  tenantId,
-      brand:      c.brand,
-      model:      c.model,
-      variant:    c.variant,
-      color:      c.color,
-      category:   'Mobile Phone',
-      hsn_code:   '8517',
-      gst_rate:   18,
-    }))
+  // 1. Models
+  const { data: existingModels } = await db
+    .from('models')
+    .select('id, brand, name, variant')
+    .eq('tenant_id', tenantId)
+
+  const modelMap = {}
+  for (const m of existingModels ?? []) {
+    modelMap[`${m.brand}|${m.name}|${m.variant}`] = m.id
+  }
+
+  const wantedModels = new Map()
+  for (const c of CATALOG) {
+    const key = `${c.brand}|${c.model}|${c.variant}`
+    if (!modelMap[key] && !wantedModels.has(key)) {
+      wantedModels.set(key, {
+        tenant_id:       tenantId,
+        brand:           c.brand,
+        name:            c.model,
+        variant:         c.variant,
+        tax_category_id: taxCat.id,
+      })
+    }
+  }
+
+  if (wantedModels.size) {
+    const { data: createdModels, error: mErr } = await db.from('models')
+      .insert([...wantedModels.values()])
+      .select('id, brand, name, variant')
+    if (mErr) throw new Error(`Model creation failed: ${mErr.message}`)
+    for (const m of createdModels ?? []) {
+      modelMap[`${m.brand}|${m.name}|${m.variant}`] = m.id
+    }
+    console.log(`    🏷️  Created ${wantedModels.size} new models (${Object.keys(modelMap).length} total)`)
+  }
+
+  // 2. Color rows
+  const { data: existing } = await db
+    .from('products')
+    .select('id, model_id, color')
+    .eq('tenant_id', tenantId)
+
+  const byModelColor = {}
+  for (const p of existing ?? []) {
+    byModelColor[`${p.model_id}|${p.color ?? ''}`] = p.id
+  }
+
+  const map = {}
+  const toCreate = []
+  for (const c of CATALOG) {
+    const modelId = modelMap[`${c.brand}|${c.model}|${c.variant}`]
+    const existingId = byModelColor[`${modelId}|${c.color}`]
+    if (existingId) {
+      map[`${c.brand}|${c.model}|${c.variant}|${c.color}`] = existingId
+    } else {
+      toCreate.push({ tenant_id: tenantId, model_id: modelId, color: c.color })
+    }
+  }
 
   if (toCreate.length) {
     const { data: created, error } = await db.from('products').insert(toCreate)
-      .select('id, brand, model, variant, color')
+      .select('id, model_id, color, models ( brand, name, variant )')
     if (error) throw new Error(`Product creation failed: ${error.message}`)
     for (const p of created ?? []) {
-      map[`${p.brand}|${p.model}|${p.variant}|${p.color}`] = p.id
+      map[`${p.models.brand}|${p.models.name}|${p.models.variant}|${p.color}`] = p.id
     }
     console.log(`    📱 Created ${toCreate.length} new products (${Object.keys(map).length} total)`)
   } else {
